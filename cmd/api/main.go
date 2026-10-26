@@ -7,6 +7,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/config"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/storage"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/submission"
 	"log/slog"
 	"net/http"
 	"os"
@@ -36,7 +37,11 @@ func run() error {
 	defer db.Close()
 	redis := queue.Open(cfg.RedisAddr, cfg.RedisPassword)
 	defer redis.Close()
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Handler(cfg.CheckTimeout, db.Ping, redis.Ping), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	service := submission.New(storage.NewRepository(db), cfg.RequestTimeout)
+	if cfg.DevAuthEnabled {
+		slog.Warn("development identity enabled; all callers share the configured local principal")
+	}
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes(cfg.CheckTimeout, db.Ping, redis.Ping, service, api.DevelopmentPrincipal(cfg.DevAuthEnabled, cfg.DevPrincipal)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	result := make(chan error, 1)
 	go func() { slog.Info("api listening", "address", cfg.HTTPAddr); result <- server.ListenAndServe() }()
 	select {

@@ -20,6 +20,7 @@ services:
       timeout: 3s
       retries: 20
   api:
+    image: judgegrid-api
     build: .
     ports:
       - "127.0.0.1:8080:8080"
@@ -27,7 +28,13 @@ services:
       DATABASE_URL: postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable
       REDIS_ADDR: redis:6379
       CHECK_TIMEOUT: 3s
-    depends_on: &dependencies
+      REQUEST_TIMEOUT: 5s
+      APP_ENV: ${APP_ENV:-production}
+      DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-false}
+      DEV_PRINCIPAL: ${DEV_PRINCIPAL:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -38,9 +45,22 @@ services:
       timeout: 4s
       retries: 10
   worker:
+    image: judgegrid-worker
     build: .
     command: [worker]
     environment: *app-env
-    depends_on: *dependencies
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  migrate:
+    image: judgegrid-api
+    build: .
+    command: [manage, migrate]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
 volumes:
   postgres-data:

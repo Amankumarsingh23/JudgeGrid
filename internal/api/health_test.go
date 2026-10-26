@@ -43,3 +43,13 @@ func TestReadinessDeadline(t *testing.T) {
 		t.Fatalf("got %d", w.Code)
 	}
 }
+
+func TestSlowDatabaseDoesNotHideHealthyRedis(t *testing.T) {
+	slow := func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }
+	ok := func(context.Context) error { return nil }
+	w := httptest.NewRecorder()
+	Handler(50*time.Millisecond, slow, ok).ServeHTTP(w, httptest.NewRequest("GET", "/readyz", nil))
+	if w.Code != 503 || w.Body.String() != "{\"postgres\":\"unavailable\",\"redis\":\"ok\"}\n" {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+}

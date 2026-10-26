@@ -17,13 +17,27 @@ func Handler(timeout time.Duration, database, redis Check) http.Handler {
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
-		checks := map[string]string{}
+		checks := map[string]string{"postgres": "unavailable", "redis": "unavailable"}
 		status := http.StatusOK
+		type result struct {
+			name string
+			err  error
+		}
+		results := make(chan result, 2)
 		for name, check := range map[string]Check{"postgres": database, "redis": redis} {
-			checks[name] = "ok"
-			if err := check(ctx); err != nil {
-				checks[name] = "unavailable"
-				status = http.StatusServiceUnavailable
+			go func() { results <- result{name, check(ctx)} }()
+		}
+		for range 2 {
+			select {
+			case result := <-results:
+				if result.err != nil {
+					status = http.StatusServiceUnavailable
+				} else {
+					checks[result.name] = "ok"
+				}
+			case <-ctx.Done():
+				respond(w, http.StatusServiceUnavailable, checks)
+				return
 			}
 		}
 		respond(w, status, checks)
