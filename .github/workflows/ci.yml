@@ -18,6 +18,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: sh scripts/check.sh
+      - run: python3 scripts/check-service-isolation.py
       - run: docker compose up --build -d --wait
       - run: docker compose run --rm migrate manage check
       - run: docker compose run --rm migrate manage seed
@@ -32,3 +33,17 @@ jobs:
       - run: python3 scripts/dispatch_smoke.py
       - if: always()
         run: docker compose logs && docker compose down
+  sandbox:
+    runs-on: ubuntu-latest
+    env:
+      JUDGEGRID_SANDBOX_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Trusted runtime prefetch and image pinning
+        run: sh scripts/setup-sandbox.sh
+      - name: Restricted sandbox enforcement tests (local controller)
+        run: go test -race -tags=sandboxintegration -v ./internal/execution

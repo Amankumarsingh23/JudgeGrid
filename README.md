@@ -1,6 +1,6 @@
 # JudgeGrid
 
-Distributed online judge and future AI code-intelligence platform. Sessions 1–3 provide runnable services, durable owner-scoped submissions, Redis Streams transport and bounded development dispatch workers. Judging is not implemented yet.
+Distributed online judge and future AI code-intelligence platform. Sessions 1–4 provide durable submissions, recoverable development dispatch and a restricted local C++17/Python execution subsystem. Full judging is not implemented yet.
 
 ## Run
 
@@ -78,6 +78,12 @@ The pool defaults to four slots, each with a unique consumer and one active mess
 
 See [dispatch commands, configuration and failure policy](docs/dispatch.md) and [ADR 0003](docs/adr/0003-streams-and-bounded-dispatch.md). Disable DEV_DISPATCH_ENABLED and DEV_AUTH_ENABLED again and run Compose to restore defaults. Secure execution, attempt fencing and reliable outbox publication remain future work.
 
+## Local sandbox execution (Session 4)
+
+An explicitly enabled fixture CLI can compile C++17 or execute Python 3 in restricted Linux containers. It runs as a trusted local controller using existing developer Docker authority. It is absent from API/worker runtime images, and no daemon socket is mounted into those services. No public execute endpoint or automatic Redis execution is enabled.
+
+See [setup and fixture commands](docs/sandbox.md), [threat model](docs/sandbox-threat-model.md) and [ADR 0004](docs/adr/0004-local-sandbox-execution.md). Setup prefetches/pins runtime images; execution stays offline. The engine separates compile/run budgets, bounds captured output, terminates the container namespace on cancellation/deadline, and reports program outcomes separately from infrastructure errors. CPU and peak-memory measurements remain explicitly unavailable. Containers and functional tests do not prove arbitrary-hostile-code safety.
+
 ## Configuration
 
 | Variable | Default |
@@ -120,6 +126,6 @@ GitHub Actions runs these checks plus migrations, seeds and live API smoke tests
 
 `cmd/` contains API, worker, management and development-publisher executable wiring. HTTP handlers call `internal/submission`, which validates use cases and calls its repository interface. `internal/storage` implements PostgreSQL persistence. `internal/domain` contains entities, validation, verdicts and state rules. `internal/queue` implements Streams transport; `internal/worker` separates the bounded pool from its handler contract. Supporting assets live in `migrations`, `infra`, `tests`, `scripts` and `docs/adr`.
 
-The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. New submissions remain QUEUED: there is no automatic publication or execution. Attempt fencing, real scheduling, sandbox execution, actual verdict generation, production authentication and AI features belong to later sessions. A transactional outbox is planned to make future queue dispatch recoverable.
+The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. New submissions remain QUEUED: there is no automatic publication or execution. The sandbox is reachable only through the separate local fixture controller. Integration into real judging, attempt fencing, real scheduling, verdict evaluation, production authentication and AI features belong to later sessions. A transactional outbox is planned to make future queue dispatch recoverable.
 
 See [the architecture decision](docs/adr/0001-service-boundaries.md).
