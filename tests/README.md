@@ -1,0 +1,1 @@
+Unit tests live alongside their packages. Integration checks use the real PostgreSQL and Redis services through Docker Compose: readiness checks both dependencies, and worker startup fails if either dependency cannot be reached. CI runs the same Compose startup and HTTP smoke checks.
