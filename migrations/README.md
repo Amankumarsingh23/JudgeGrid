@@ -12,3 +12,5 @@ docker compose run --rm -e APP_ENV=development migrate manage seed
 Seed is an explicit development-only CLI operation. It creates two problems and their first versions idempotently, preserving any newer current-version pointer. Version rows cannot be updated or deleted. Publish a new version by inserting it and updating the problem's current pointer in a transaction; there is no public mutation endpoint.
 
 Migrations are forward-only. Back up persistent data before future schema changes. Tests use isolated schemas and never drop the application's public schema.
+
+Session 3 adds development_dispatch_receipts in migration 0002. Its unique (submission_id, attempt) key guards only isolated harness effects; it is not a judge verdict, execution lease or attempt-fencing record. The original migration is unchanged.

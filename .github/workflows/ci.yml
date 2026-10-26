@@ -9,6 +9,8 @@ jobs:
       APP_ENV: development
       DEV_AUTH_ENABLED: 'true'
       DEV_PRINCIPAL: ci-local-user
+      DEV_DISPATCH_ENABLED: 'true'
+      QUEUE_STREAM: dev:judgegrid:ci-dispatch
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -24,7 +26,9 @@ jobs:
           docker run --rm --network judgegrid_default
           -v "$PWD:/src" -w /src
           -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable
+          -e TEST_REDIS_ADDR=redis:6379
           golang:1.26 go test -race -tags=integration -v ./tests
       - run: python3 scripts/smoke.py
+      - run: python3 scripts/dispatch_smoke.py
       - if: always()
         run: docker compose logs && docker compose down

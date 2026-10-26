@@ -14,6 +14,9 @@ services:
       retries: 20
   redis:
     image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes', --appendfsync, everysec]
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: [CMD, redis-cli, ping]
       interval: 3s
@@ -48,8 +51,30 @@ services:
     image: judgegrid-worker
     build: .
     command: [worker]
-    environment: *app-env
+    environment:
+      <<: *app-env
+      DEV_DISPATCH_ENABLED: ${DEV_DISPATCH_ENABLED:-false}
+      QUEUE_STREAM: ${QUEUE_STREAM:-submissions:jobs}
+      QUEUE_GROUP: ${QUEUE_GROUP:-judges}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      WORKER_HEALTH_ADDR: ${WORKER_HEALTH_ADDR:-:8081}
+      WORKER_BLOCK: ${WORKER_BLOCK:-1s}
+      WORKER_MIN_IDLE: ${WORKER_MIN_IDLE:-1m}
+      WORKER_RECOVERY_INTERVAL: ${WORKER_RECOVERY_INTERVAL:-2s}
+      WORKER_HANDLER_TIMEOUT: ${WORKER_HANDLER_TIMEOUT:-5s}
+      WORKER_COMMAND_TIMEOUT: ${WORKER_COMMAND_TIMEOUT:-3s}
+      WORKER_SHUTDOWN_GRACE: ${WORKER_SHUTDOWN_GRACE:-10s}
+      WORKER_BACKOFF_MIN: ${WORKER_BACKOFF_MIN:-100ms}
+      WORKER_BACKOFF_MAX: ${WORKER_BACKOFF_MAX:-5s}
+    stop_grace_period: ${WORKER_CONTAINER_STOP_GRACE:-20s}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8081/readyz]
+      interval: 5s
+      timeout: 4s
+      retries: 10
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -64,3 +89,4 @@ services:
         condition: service_healthy
 volumes:
   postgres-data:
+  redis-data:

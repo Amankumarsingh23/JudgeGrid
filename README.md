@@ -1,6 +1,6 @@
 # JudgeGrid
 
-Distributed online judge and future AI code-intelligence platform. Sessions 1–2 provide runnable services and durable, owner-scoped submission management. Judging is not implemented yet.
+Distributed online judge and future AI code-intelligence platform. Sessions 1–3 provide runnable services, durable owner-scoped submissions, Redis Streams transport and bounded development dispatch workers. Judging is not implemented yet.
 
 ## Run
 
@@ -29,7 +29,7 @@ For the Docker-based Go checks, mount that PEM and set `SSL_CERT_FILE` to its co
 docker compose down
 ```
 
-This stops services and preserves the PostgreSQL volume. Local database credentials are for development. Only the API port is published, bound to localhost. Production deployment and an authenticated identity provider are not implemented.
+This stops services and preserves PostgreSQL and Redis volumes. Redis uses AOF with every-second fsync; this is not a guarantee against all host/storage failures. Local database credentials are for development. Only the API port is published, bound to localhost. Production deployment and an authenticated identity provider are not implemented.
 
 ## Try the Submission API
 
@@ -57,6 +57,26 @@ On POSIX shells, export the same three variables before running Compose. You can
 Migrations run as a separate, one-shot Compose service before API startup. Seeds are explicit and idempotent, create two public demonstration problems, and have no HTTP mutation endpoint. The current problem version is selected by the server. A retry with the same principal/key and normalized request returns the original submission, even after a new problem version is published. Reusing a key for different intent returns 409.
 
 See [API contract and response examples](docs/api.md), [migration operations](migrations/README.md) and [durable-submission decisions](docs/adr/0002-durable-submissions.md).
+
+## Development dispatch (Session 3)
+
+Production consumption is disabled. The optional harness handles only dispatch_test references on an isolated stream, records idempotent development receipts in PostgreSQL, and leaves real submissions QUEUED with no verdict. The HTTP create path still publishes no Redis messages.
+
+After enabling the local API identity above:
+
+```powershell
+$env:DEV_DISPATCH_ENABLED = 'true'
+$env:QUEUE_STREAM = 'dev:judgegrid:dispatch'
+docker compose up -d --wait
+python scripts/smoke.py
+python scripts/dispatch_smoke.py
+docker compose exec -T redis redis-cli XPENDING dev:judgegrid:dispatch judges
+docker compose exec -T worker wget -qO- http://127.0.0.1:8081/readyz
+```
+
+The pool defaults to four slots, each with a unique consumer and one active message at most. Redis coordinates consumers across processes; goroutines bound work within each process. ACK follows a durable receipt or known duplicate. Failures and malformed/unsupported messages stay pending for explicit recovery. No stream trimming is configured.
+
+See [dispatch commands, configuration and failure policy](docs/dispatch.md) and [ADR 0003](docs/adr/0003-streams-and-bounded-dispatch.md). Disable DEV_DISPATCH_ENABLED and DEV_AUTH_ENABLED again and run Compose to restore defaults. Secure execution, attempt fencing and reliable outbox publication remain future work.
 
 ## Configuration
 
@@ -88,18 +108,18 @@ On PowerShell without Go installed, use Docker:
 docker run --rm -v "${PWD}:/src" -w /src golang:1.26 sh scripts/check.sh
 ```
 
-Checks cover formatting, vet, normal/race-enabled unit tests and all three executable builds. PostgreSQL integration tests are a separate required check:
+Checks cover formatting, vet, normal/race-enabled unit tests and all four executable builds. PostgreSQL/Redis integration tests are a separate required check:
 
 ```powershell
-docker run --rm --network judgegrid_default -v "${PWD}:/src" -v judgegrid-go-cache:/go -w /src -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable golang:1.26 go test -race -tags=integration -v ./tests
+docker run --rm --network judgegrid_default -v "${PWD}:/src" -v judgegrid-go-cache:/go -w /src -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable -e TEST_REDIS_ADDR=redis:6379 golang:1.26 go test -race -tags=integration -v ./tests
 ```
 
 GitHub Actions runs these checks plus migrations, seeds and live API smoke tests. See [test instructions](tests/README.md). Dependency failure can be checked by stopping Redis, requesting `/readyz` (503) and `/healthz` (200), then restarting Redis and checking readiness recovers.
 
 ## Boundaries
 
-`cmd/` contains API, worker and management executable wiring. HTTP handlers call `internal/submission`, which validates use cases and calls its repository interface. `internal/storage` implements PostgreSQL persistence. `internal/domain` contains entities, validation, verdicts and state rules. `internal/config`, `queue` and `worker` retain the foundation infrastructure. Supporting assets live in `migrations`, `infra`, `tests`, `scripts` and `docs/adr`.
+`cmd/` contains API, worker, management and development-publisher executable wiring. HTTP handlers call `internal/submission`, which validates use cases and calls its repository interface. `internal/storage` implements PostgreSQL persistence. `internal/domain` contains entities, validation, verdicts and state rules. `internal/queue` implements Streams transport; `internal/worker` separates the bounded pool from its handler contract. Supporting assets live in `migrations`, `infra`, `tests`, `scripts` and `docs/adr`.
 
-The worker verifies connectivity and waits for a shutdown signal. New submissions remain QUEUED: there is no Redis publication or execution. Queue consumers, attempt fencing, scheduling, sandbox execution, actual verdict generation, production authentication and AI features belong to later sessions. A transactional outbox is planned to make future queue dispatch recoverable.
+The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. New submissions remain QUEUED: there is no automatic publication or execution. Attempt fencing, real scheduling, sandbox execution, actual verdict generation, production authentication and AI features belong to later sessions. A transactional outbox is planned to make future queue dispatch recoverable.
 
 See [the architecture decision](docs/adr/0001-service-boundaries.md).
