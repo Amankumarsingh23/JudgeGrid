@@ -55,11 +55,17 @@ jobs:
       - name: Restricted sandbox enforcement tests (local controller)
         run: go test -race -tags=sandboxintegration -v ./internal/execution
       - name: Local judge PostgreSQL
-        run: docker compose -f docker-compose.yml -f infra/local-judge.compose.yml up -d --wait postgres
+        run: docker compose -f docker-compose.yml -f infra/local-judge.compose.yml up -d --wait postgres redis
       - name: Real durable judging matrix
         env:
           JUDGEGRID_JUDGE_TESTS: '1'
           TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
         run: go test -race -tags=judgeintegration -v ./internal/judge
+      - name: Trusted automatic judging and execution crash windows
+        env:
+          JUDGEGRID_AGENT_TESTS: '1'
+          TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
+          TEST_REDIS_ADDR: 127.0.0.1:16379
+        run: go test -race -tags=agentintegration -v ./internal/judge
       - if: always()
         run: docker compose -f docker-compose.yml -f infra/local-judge.compose.yml down

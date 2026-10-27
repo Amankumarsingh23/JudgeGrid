@@ -70,3 +70,7 @@ The separate `judge-local` CLI can evaluate an owned durable submission in an ex
 ## Session 6 dispatch intents
 
 Creation atomically commits one initial outbox intent with the submission and idempotency mapping. Owner/key/body replay returns the same ID without another event; body conflict remains 409. Redis publication is asynchronous through an explicitly enabled relay, never an HTTP dual write. Excess pending/claimed/quarantined backlog rejects new acceptance with 503 `dispatch_backlog` and `Retry-After: 30`; existing idempotent replays still succeed. Public responses contain no outbox payload or hidden tests. Historical submissions are not automatically backfilled. Automatic real execution stays disabled; see [outbox operations](outbox.md).
+
+## Session 7 controlled execution
+
+The explicitly enabled trusted development agent can automatically evaluate the configured principal's published submissions. Owner-scoped GET returns the genuine final verdict. Unsupported runtime languages become durable FAILED with no fabricated verdict and an internal rejection reason. No public execution endpoint, lease override, hidden-evidence endpoint or automatic production consumer is added. See [agent operations](execution-agent.md).

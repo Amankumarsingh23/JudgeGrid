@@ -1,6 +1,6 @@
 # Controlled local judging
 
-Use a trusted development host with Docker, Go 1.26, the Session 4 runtime manifest and seccomp profile. Ordinary API/worker containers never receive Docker authority. There is no public judge endpoint. Creation now commits an outbox intent; only the separately enabled relay publishes Redis jobs, and automatic judging remains disabled. See [outbox operations](outbox.md).
+Use a trusted development host with Docker, Go 1.26, the Session 4 runtime manifest and seccomp profile. Ordinary API/worker containers never receive Docker authority. There is no public judge endpoint. Creation commits an outbox intent; a separately enabled relay publishes it. Session 7's optional [trusted development agent](execution-agent.md) can judge authorized work automatically under renewable leases. The one-shot local CLI below now receives a bounded 180-second database fence in addition to its advisory lock. Default production execution remains disabled.
 
 PowerShell setup:
 

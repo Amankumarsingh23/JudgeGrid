@@ -81,6 +81,8 @@ type Summary struct {
 	Replayed         bool            `json:"replayed"`
 }
 type Work struct {
+	Owner                      string
+	Generation                 int
 	RunID                      string
 	Submission                 domain.Submission
 	Reference                  bundles.Reference

@@ -96,7 +96,7 @@ func (s *evaluationSession) Begin(ctx context.Context) (work judge.Work, err err
 		return work, err
 	}
 	if work.Submission.Status == domain.Completed || work.Submission.Status == domain.Failed {
-		summary, e := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE submission_id=$1 AND generation=1`, s.id))
+		summary, e := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE submission_id=$1 ORDER BY generation DESC LIMIT 1`, s.id))
 		if e != nil {
 			return work, domain.ErrConflict
 		}
@@ -116,8 +116,14 @@ func (s *evaluationSession) Begin(ctx context.Context) (work judge.Work, err err
 	if err = tx.QueryRow(ctx, `UPDATE submissions SET status='RUNNING',state_version=state_version+1,updated_at=clock_timestamp() WHERE id=$1 AND status='QUEUED' AND state_version=$2 RETURNING state_version`, s.id, work.Submission.StateVersion).Scan(&work.StateVersion); err != nil {
 		return work, err
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO evaluation_runs(submission_id,problem_version_id,bundle_sha,evaluator_version,tests_total) VALUES($1,$2,$3,$4,$5) RETURNING id::text`, s.id, work.Submission.ProblemVersionID, work.Reference.Hash, judge.EvaluatorVersion, len(work.Reference.Cases)).Scan(&work.RunID)
+	work.Owner = "local-" + newID()
+	work.Generation = 1
+	work.Submission.Status = domain.Running
+	err = tx.QueryRow(ctx, `INSERT INTO evaluation_runs(submission_id,problem_version_id,bundle_sha,evaluator_version,tests_total,owner_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING id::text`, s.id, work.Submission.ProblemVersionID, work.Reference.Hash, judge.EvaluatorVersion, len(work.Reference.Cases), work.Owner).Scan(&work.RunID)
 	if err != nil {
+		return work, err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO execution_ownership(submission_id,run_id,generation,owner_id,mode,state,lease_expires_at,max_attempts) VALUES($1,$2,1,$3,'local','ACTIVE',clock_timestamp()+interval '180 seconds',1)`, s.id, work.RunID, work.Owner); err != nil {
 		return work, err
 	}
 	return work, tx.Commit(ctx)
@@ -150,6 +156,9 @@ func completeEvaluation(ctx context.Context, db transactionBeginner, work judge.
 		return judge.Summary{}, err
 	}
 	defer tx.Rollback(ctx)
+	if err = authorizeWork(ctx, tx, work); err != nil {
+		return judge.Summary{}, err
+	}
 	var status string
 	var storedHash *string
 	var version int64
@@ -192,12 +201,16 @@ func completeEvaluation(ctx context.Context, db transactionBeginner, work judge.
 			return judge.Summary{}, domain.ErrConflict
 		}
 	}
-	tag, err := tx.Exec(ctx, `UPDATE submissions SET status='EVALUATING',state_version=state_version+1,updated_at=clock_timestamp() WHERE id=$1 AND principal_id=$2 AND status='RUNNING' AND state_version=$3`, submissionID, work.Submission.PrincipalID, work.StateVersion)
-	if err != nil {
-		return judge.Summary{}, err
-	}
-	if tag.RowsAffected() != 1 {
-		return judge.Summary{}, domain.ErrConflict
+	stateVersion := work.StateVersion
+	if work.Submission.Status != domain.Evaluating {
+		tag, err := tx.Exec(ctx, `UPDATE submissions SET status='EVALUATING',state_version=state_version+1,updated_at=clock_timestamp() WHERE id=$1 AND principal_id=$2 AND status='RUNNING' AND state_version=$3`, submissionID, work.Submission.PrincipalID, work.StateVersion)
+		if err != nil {
+			return judge.Summary{}, err
+		}
+		if tag.RowsAffected() != 1 {
+			return judge.Summary{}, domain.ErrConflict
+		}
+		stateVersion++
 	}
 	passed := 0
 	for _, row := range report.Tests {
@@ -223,12 +236,15 @@ func completeEvaluation(ctx context.Context, db transactionBeginner, work judge.
 	if err != nil {
 		return judge.Summary{}, err
 	}
-	tag, err = tx.Exec(ctx, `UPDATE submissions SET status='COMPLETED',verdict=$2,state_version=state_version+1,updated_at=clock_timestamp() WHERE id=$1 AND status='EVALUATING' AND state_version=$3`, submissionID, report.Verdict, work.StateVersion+1)
+	tag, err := tx.Exec(ctx, `UPDATE submissions SET status='COMPLETED',verdict=$2,state_version=state_version+1,updated_at=clock_timestamp() WHERE id=$1 AND status='EVALUATING' AND state_version=$3`, submissionID, report.Verdict, stateVersion)
 	if err != nil {
 		return judge.Summary{}, err
 	}
 	if tag.RowsAffected() != 1 {
 		return judge.Summary{}, domain.ErrConflict
+	}
+	if _, err = tx.Exec(ctx, `UPDATE execution_ownership SET state='DONE' WHERE submission_id=$1`, submissionID); err != nil {
+		return judge.Summary{}, err
 	}
 	summary, err := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE id=$1`, work.RunID))
 	if err != nil {
@@ -252,6 +268,9 @@ func (s *evaluationSession) Fail(ctx context.Context, work judge.Work, code stri
 		return judge.Summary{}, err
 	}
 	defer tx.Rollback(ctx)
+	if err = authorizeWork(ctx, tx, work); err != nil {
+		return judge.Summary{}, err
+	}
 	var status string
 	err = tx.QueryRow(ctx, `SELECT status FROM evaluation_runs WHERE id=$1 AND submission_id=$2 FOR UPDATE`, work.RunID, s.id).Scan(&status)
 	if err != nil {
@@ -269,6 +288,9 @@ func (s *evaluationSession) Fail(ctx context.Context, work judge.Work, code stri
 	}
 	_, err = tx.Exec(ctx, `UPDATE evaluation_runs SET status='FAILED',failure_code=$2,finished_at=clock_timestamp() WHERE id=$1`, work.RunID, code)
 	if err != nil {
+		return judge.Summary{}, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE execution_ownership SET state='EXHAUSTED',failure_code=$2 WHERE submission_id=$1`, s.id, code); err != nil {
 		return judge.Summary{}, err
 	}
 	summary, err := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE id=$1`, work.RunID))

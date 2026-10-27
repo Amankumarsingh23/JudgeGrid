@@ -2,6 +2,8 @@
 
 The sandbox controller is an explicitly enabled local CLI. It is not an API endpoint or Redis consumer. It does not write submissions, receipts or verdicts. API/worker containers never receive Docker daemon access, and the controller is deliberately absent from their runtime image.
 
+Session 7 reuses this restricted backend through a separate opt-in [trusted development execution agent](execution-agent.md). That host agent consumes authorized references and persists fenced results; the fixture CLI remains unchanged. No ordinary API/worker/relay container gains controller or Docker authority.
+
 ## Requirements
 
 Use Docker Desktop with its Linux engine on Windows, or a dedicated local Linux development host with Docker. The controller requires Linux cgroup v2, working CPU/memory/swap/PID controls and seccomp; missing capabilities fail closed. Docker Desktop's Linux VM is supported for these development fixtures, but this is not a production security assurance.

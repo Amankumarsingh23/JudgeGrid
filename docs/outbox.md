@@ -4,6 +4,8 @@ Every new accepted submission now commits one initial dispatch intent in the exi
 
 The relay is off by default and belongs to Compose profile `outbox`. Running it publishes real references but does not enable judging. Production workers still consume no real jobs. The development receipt handler retains unsupported real jobs in the PEL without a receipt or ACK. Its stateful receipt path checks the authoritative submission is still QUEUED at state version zero. Schema 1 remains valid for the existing harness; schema 2 adds an event UUID to real references.
 
+Session 7 adds a separately authorized host-side [development agent](execution-agent.md) with execution leases and result fencing. It can consume schema-2 references for its configured principal; relay claims still own publication metadata only. The default services do not execute code.
+
 ## Controlled local demonstration
 
 ```powershell

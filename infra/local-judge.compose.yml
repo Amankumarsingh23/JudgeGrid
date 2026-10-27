@@ -1,6 +1,9 @@
 # Explicit development-only overlay. The trusted host controller needs loopback PostgreSQL access.
 # docker compose -f docker-compose.yml -f infra/local-judge.compose.yml up -d --wait
 services:
+  redis:
+    ports:
+      - "127.0.0.1:16379:6379"
   postgres:
     ports:
       - "127.0.0.1:15432:5432"

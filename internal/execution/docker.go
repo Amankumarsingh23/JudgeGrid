@@ -61,6 +61,16 @@ func NewDocker(images Images, profile string, slots int) (*Docker, error) {
 func (d *Docker) Close() error      { return os.Remove(d.seccomp) }
 func (d *Docker) PeakActive() int32 { return d.peak.Load() }
 
+// CheckImages verifies both configured capabilities before an automatic controller accepts work.
+func (d *Docker) CheckImages(ctx context.Context) error {
+	for _, id := range []string{d.images.CPP, d.images.Python} {
+		if _, err := control(ctx, "image", "inspect", id); err != nil {
+			return &InfrastructureError{"setup", "image", err}
+		}
+	}
+	return nil
+}
+
 type Environment struct {
 	ServerVersion   string   `json:"ServerVersion"`
 	KernelVersion   string   `json:"KernelVersion"`
