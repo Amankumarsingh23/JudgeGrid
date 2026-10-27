@@ -9,15 +9,16 @@ import (
 )
 
 type Config struct {
-	HTTPAddr       string
-	DatabaseURL    string
-	RedisAddr      string
-	RedisPassword  string
-	CheckTimeout   time.Duration
-	RequestTimeout time.Duration
-	AppEnv         string
-	DevAuthEnabled bool
-	DevPrincipal   string
+	HTTPAddr           string
+	DatabaseURL        string
+	RedisAddr          string
+	RedisPassword      string
+	CheckTimeout       time.Duration
+	RequestTimeout     time.Duration
+	AppEnv             string
+	DevAuthEnabled     bool
+	DevPrincipal       string
+	OutboxBacklogLimit int
 }
 
 func Load() (Config, error) {
@@ -37,6 +38,10 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("DEV_AUTH_ENABLED must be a boolean")
 	}
 	c.DevPrincipal = os.Getenv("DEV_PRINCIPAL")
+	c.OutboxBacklogLimit, err = strconv.Atoi(env("OUTBOX_BACKLOG_LIMIT", "10000"))
+	if err != nil || c.OutboxBacklogLimit < 1 || c.OutboxBacklogLimit > 100000 {
+		return Config{}, fmt.Errorf("OUTBOX_BACKLOG_LIMIT must be 1..100000")
+	}
 	if c.DevAuthEnabled && (c.AppEnv != "development" || strings.TrimSpace(c.DevPrincipal) == "" || len(c.DevPrincipal) > 200) {
 		return Config{}, fmt.Errorf("development auth requires APP_ENV=development and DEV_PRINCIPAL of 1..200 characters")
 	}

@@ -65,4 +65,8 @@ IDs and timestamps above are illustrative. Equivalent same-key requests return t
 HTTP parsing → trusted principal + service validation → PostgreSQL transaction → QUEUED response. The transaction checks idempotency, selects the current immutable problem version, and saves submission plus mapping together. No Redis dispatch or execution occurs in Session 2.
 # Session 5 local judging
 
-The separate `judge-local` CLI can evaluate an owned durable submission in an explicitly opted-in development environment. Existing submission reads reflect its final status and verdict. No judge endpoint or hidden-case/evidence endpoint is added; HTTP creation still only queues durable state without Redis publication. See [local judging](local-judging.md).
+The separate `judge-local` CLI can evaluate an owned durable submission in an explicitly opted-in development environment. Existing submission reads reflect its final status and verdict. No judge endpoint or hidden-case/evidence endpoint is added. See [local judging](local-judging.md).
+
+## Session 6 dispatch intents
+
+Creation atomically commits one initial outbox intent with the submission and idempotency mapping. Owner/key/body replay returns the same ID without another event; body conflict remains 409. Redis publication is asynchronous through an explicitly enabled relay, never an HTTP dual write. Excess pending/claimed/quarantined backlog rejects new acceptance with 503 `dispatch_backlog` and `Retry-After: 30`; existing idempotent replays still succeed. Public responses contain no outbox payload or hidden tests. Historical submissions are not automatically backfilled. Automatic real execution stays disabled; see [outbox operations](outbox.md).

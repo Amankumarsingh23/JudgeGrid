@@ -31,8 +31,15 @@ jobs:
           golang:1.26 go test -race -tags=integration -v ./tests
       - run: python3 scripts/smoke.py
       - run: python3 scripts/dispatch_smoke.py
+      - name: Explicit isolated outbox relay demonstration
+        env:
+          OUTBOX_RELAY_ENABLED: 'true'
+          OUTBOX_STREAM: test:judgegrid:ci-outbox
+        run: |
+          docker compose --profile outbox up -d --wait outbox-relay
+          python3 scripts/outbox_smoke.py --stream test:judgegrid:ci-outbox
       - if: always()
-        run: docker compose logs && docker compose down
+        run: docker compose --profile outbox logs && docker compose --profile outbox down
   sandbox:
     runs-on: ubuntu-latest
     env:

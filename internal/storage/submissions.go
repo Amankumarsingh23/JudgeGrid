@@ -12,9 +12,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Repository struct{ pool *pgxpool.Pool }
+type Repository struct {
+	pool         *pgxpool.Pool
+	backlogLimit int
+}
 
-func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool} }
+func NewRepository(pool *pgxpool.Pool) *Repository {
+	return &Repository{pool: pool, backlogLimit: 10000}
+}
+func NewRepositoryWithBacklog(pool *pgxpool.Pool, limit int) *Repository {
+	return &Repository{pool: pool, backlogLimit: limit}
+}
 
 const columns = `s.id::text,s.problem_id,s.problem_version_id,v.version_number,s.principal_id,s.language,s.source_code,s.status,s.verdict,s.state_version,s.created_at,s.updated_at`
 
@@ -75,12 +83,30 @@ func (r *Repository) Create(ctx context.Context, principal, key string, req doma
 		return domain.Submission{}, false, domain.ErrConflict
 	}
 	id = newID()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(2349012506)`); err != nil {
+		return domain.Submission{}, false, err
+	}
+	var backlog int
+	err = tx.QueryRow(ctx, `SELECT count(*) FROM(
+ (SELECT id FROM outbox_events WHERE status='PENDING' ORDER BY created_at,id LIMIT $1)
+ UNION ALL (SELECT id FROM outbox_events WHERE status='CLAIMED' ORDER BY created_at,id LIMIT $1)
+ UNION ALL (SELECT id FROM outbox_events WHERE status='QUARANTINED' ORDER BY created_at,id LIMIT $1)
+ LIMIT $1) bounded`, r.backlogLimit).Scan(&backlog)
+	if err != nil {
+		return domain.Submission{}, false, err
+	}
+	if r.backlogLimit < 1 || backlog >= r.backlogLimit {
+		return domain.Submission{}, false, domain.ErrBacklog
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO submissions(id,problem_id,problem_version_id,principal_id,language,source_code) VALUES($1,$2,$3,$4,$5,$6)`, id, req.ProblemID, *versionID, principal, req.Language, req.SourceCode)
 	if err != nil {
 		return domain.Submission{}, false, err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO submission_idempotency(principal_id,idempotency_key,request_fingerprint,submission_id) VALUES($1,$2,$3,$4)`, principal, key, req.Fingerprint(), id)
 	if err != nil {
+		return domain.Submission{}, false, err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO outbox_events(submission_id) VALUES($1)`, id); err != nil {
 		return domain.Submission{}, false, err
 	}
 	s, err := scanSubmission(tx.QueryRow(ctx, `SELECT `+columns+` FROM submissions s JOIN problem_versions v ON v.id=s.problem_version_id WHERE s.id=$1`, id))

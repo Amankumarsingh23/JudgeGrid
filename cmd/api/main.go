@@ -37,7 +37,7 @@ func run() error {
 	defer db.Close()
 	redis := queue.Open(cfg.RedisAddr, cfg.RedisPassword)
 	defer redis.Close()
-	service := submission.New(storage.NewRepository(db), cfg.RequestTimeout)
+	service := submission.New(storage.NewRepositoryWithBacklog(db, cfg.OutboxBacklogLimit), cfg.RequestTimeout)
 	if cfg.DevAuthEnabled {
 		slog.Warn("development identity enabled; all callers share the configured local principal")
 	}

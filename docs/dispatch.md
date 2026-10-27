@@ -2,6 +2,8 @@
 
 This tests transport and durable receipts. It does not execute submitted code, produce verdicts, or advance submission state. Default production submission consumption is disabled.
 
+Session 6 adds an independent [transactional outbox relay](outbox.md). Schema-2 real references carry a logical event UUID; schema-1 development messages remain supported. Keep relay and receipt demonstration streams separate. Unsupported real jobs remain unacknowledged/recoverable, and development receipt writes now check current QUEUED/state-version-zero admission. Relay claim generations fence publication metadata only; they are not execution leases.
+
 ## Run locally
 
 From PowerShell, build/start the application with explicit development settings:

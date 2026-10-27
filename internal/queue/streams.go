@@ -25,15 +25,19 @@ type Job struct {
 	Kind         string
 	SubmissionID string
 	Attempt      int64
+	EventID      string
 }
 
 func (j Job) Validate() error {
-	if !uuid.MatchString(j.SubmissionID) || j.Attempt < 1 || (j.Kind != SubmissionJob && j.Kind != DispatchTestJob) {
+	if !uuid.MatchString(j.SubmissionID) || j.Attempt < 1 || (j.Kind != SubmissionJob && j.Kind != DispatchTestJob) || (j.EventID != "" && (!uuid.MatchString(j.EventID) || j.Kind != SubmissionJob)) {
 		return ErrMalformed
 	}
 	return nil
 }
 func (j Job) Values() map[string]any {
+	if j.EventID != "" {
+		return map[string]any{"schema_version": "2", "kind": j.Kind, "submission_id": strings.ToLower(j.SubmissionID), "attempt": strconv.FormatInt(j.Attempt, 10), "event_id": strings.ToLower(j.EventID)}
+	}
 	return map[string]any{"schema_version": "1", "kind": j.Kind, "submission_id": strings.ToLower(j.SubmissionID), "attempt": strconv.FormatInt(j.Attempt, 10)}
 }
 
@@ -43,11 +47,12 @@ type Message struct {
 }
 
 func (m Message) Job() (Job, error) {
-	if len(m.Values) != 4 {
+	if len(m.Values) != 4 && len(m.Values) != 5 {
 		return Job{}, ErrMalformed
 	}
 	value := func(key string) string { s, _ := m.Values[key].(string); return s }
-	if value("schema_version") != "1" {
+	version := value("schema_version")
+	if (version != "1" || len(m.Values) != 4) && (version != "2" || len(m.Values) != 5 || !uuid.MatchString(value("event_id"))) {
 		return Job{}, ErrMalformed
 	}
 	attempt, err := strconv.ParseInt(value("attempt"), 10, 64)
@@ -55,6 +60,9 @@ func (m Message) Job() (Job, error) {
 		return Job{}, ErrMalformed
 	}
 	j := Job{Kind: value("kind"), SubmissionID: strings.ToLower(value("submission_id")), Attempt: attempt}
+	if version == "2" {
+		j.EventID = strings.ToLower(value("event_id"))
+	}
 	return j, j.Validate()
 }
 

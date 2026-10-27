@@ -1,6 +1,6 @@
 # Controlled local judging
 
-Use a trusted development host with Docker, Go 1.26, the Session 4 runtime manifest and seccomp profile. Ordinary API/worker containers never receive Docker authority. There is no public judge endpoint and submission creation still does not publish Redis jobs.
+Use a trusted development host with Docker, Go 1.26, the Session 4 runtime manifest and seccomp profile. Ordinary API/worker containers never receive Docker authority. There is no public judge endpoint. Creation now commits an outbox intent; only the separately enabled relay publishes Redis jobs, and automatic judging remains disabled. See [outbox operations](outbox.md).
 
 PowerShell setup:
 

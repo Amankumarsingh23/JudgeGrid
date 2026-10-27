@@ -76,7 +76,7 @@ docker compose exec -T worker wget -qO- http://127.0.0.1:8081/readyz
 
 The pool defaults to four slots, each with a unique consumer and one active message at most. Redis coordinates consumers across processes; goroutines bound work within each process. ACK follows a durable receipt or known duplicate. Failures and malformed/unsupported messages stay pending for explicit recovery. No stream trimming is configured.
 
-See [dispatch commands, configuration and failure policy](docs/dispatch.md) and [ADR 0003](docs/adr/0003-streams-and-bounded-dispatch.md). Disable DEV_DISPATCH_ENABLED and DEV_AUTH_ENABLED again and run Compose to restore defaults. Secure execution, attempt fencing and reliable outbox publication remain future work.
+See [dispatch commands, configuration and failure policy](docs/dispatch.md) and [ADR 0003](docs/adr/0003-streams-and-bounded-dispatch.md). Disable DEV_DISPATCH_ENABLED and DEV_AUTH_ENABLED again and run Compose to restore defaults. Local sandboxed judging and recoverable outbox publication are available separately; distributed execution ownership remains future work.
 
 ## Local sandbox execution (Session 4)
 
@@ -126,6 +126,6 @@ GitHub Actions runs these checks plus migrations, seeds and live API smoke tests
 
 `cmd/` contains API, worker, management and development-publisher executable wiring. HTTP handlers call `internal/submission`, which validates use cases and calls its repository interface. `internal/storage` implements PostgreSQL persistence. `internal/domain` contains entities, validation, verdicts and state rules. `internal/queue` implements Streams transport; `internal/worker` separates the bounded pool from its handler contract. Supporting assets live in `migrations`, `infra`, `tests`, `scripts` and `docs/adr`.
 
-The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. New submissions remain QUEUED until explicitly judged: there is no automatic publication or execution. Session 5 adds a separate trusted local controller for durable C++/Python judging, immutable private suites and atomic result persistence. See [local judging](docs/local-judging.md) and [ADR 0005](docs/adr/0005-immutable-local-judging.md). Distributed ownership, scheduling, production authentication and AI features belong to later sessions. Session 6 adds a transactional outbox.
+The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. Session 6 atomically creates a dispatch intent with every new submission; an explicitly enabled outbox relay publishes it with recoverable at-least-once semantics. Automatic execution remains disabled. See [outbox operations](docs/outbox.md) and [ADR 0006](docs/adr/0006-transactional-outbox.md). Session 5's separate trusted local controller still supports durable C++/Python judging: see [local judging](docs/local-judging.md). Distributed execution ownership is Session 7 work.
 
 See [the architecture decision](docs/adr/0001-service-boundaries.md).

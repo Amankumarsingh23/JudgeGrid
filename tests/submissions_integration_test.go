@@ -201,6 +201,10 @@ func TestTwentyConcurrentHTTPRequests(t *testing.T) {
 	if created != 1 || replayed != 19 || submissions != 1 || keys != 1 {
 		t.Fatalf("created=%d replayed=%d rows=%d mappings=%d", created, replayed, submissions, keys)
 	}
+	var intents int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM outbox_events WHERE submission_id=$1`, id).Scan(&intents); err != nil || intents != 1 {
+		t.Fatal("I: initial outbox uniqueness", intents, err)
+	}
 	t.Logf("20 HTTP requests: %d created, %d replays, %d submission, %d mapping, same ID %s", created, replayed, submissions, keys, id)
 }
 

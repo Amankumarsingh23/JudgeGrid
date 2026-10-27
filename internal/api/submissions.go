@@ -147,6 +147,9 @@ func errorBody(code, message string) any {
 func apiError(w http.ResponseWriter, err error) {
 	status, code, message := 503, "unavailable", "service temporarily unavailable"
 	switch {
+	case errors.Is(err, domain.ErrBacklog):
+		w.Header().Set("Retry-After", "30")
+		status, code, message = 503, "dispatch_backlog", "dispatch capacity temporarily unavailable"
 	case errors.Is(err, domain.ErrInvalid):
 		status, code, message = 400, "invalid_request", "invalid request"
 	case errors.Is(err, domain.ErrTooLarge):

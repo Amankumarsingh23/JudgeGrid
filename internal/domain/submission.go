@@ -15,6 +15,7 @@ var (
 	ErrNotFound     = errors.New("resource not found")
 	ErrConflict     = errors.New("state or idempotency conflict")
 	ErrUnauthorized = errors.New("authentication required")
+	ErrBacklog      = errors.New("dispatch backlog admission threshold reached")
 )
 
 type Status string
