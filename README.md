@@ -114,7 +114,7 @@ On PowerShell without Go installed, use Docker:
 docker run --rm -v "${PWD}:/src" -w /src golang:1.26 sh scripts/check.sh
 ```
 
-Checks cover formatting, vet, normal/race-enabled unit tests and all four executable builds. PostgreSQL/Redis integration tests are a separate required check:
+Checks cover formatting, vet, normal/race-enabled unit tests and all executable builds. PostgreSQL/Redis integration tests are a separate required check:
 
 ```powershell
 docker run --rm --network judgegrid_default -v "${PWD}:/src" -v judgegrid-go-cache:/go -w /src -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable -e TEST_REDIS_ADDR=redis:6379 golang:1.26 go test -race -tags=integration -v ./tests
@@ -126,6 +126,6 @@ GitHub Actions runs these checks plus migrations, seeds and live API smoke tests
 
 `cmd/` contains API, worker, management and development-publisher executable wiring. HTTP handlers call `internal/submission`, which validates use cases and calls its repository interface. `internal/storage` implements PostgreSQL persistence. `internal/domain` contains entities, validation, verdicts and state rules. `internal/queue` implements Streams transport; `internal/worker` separates the bounded pool from its handler contract. Supporting assets live in `migrations`, `infra`, `tests`, `scripts` and `docs/adr`.
 
-The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. New submissions remain QUEUED: there is no automatic publication or execution. The sandbox is reachable only through the separate local fixture controller. Integration into real judging, attempt fencing, real scheduling, verdict evaluation, production authentication and AI features belong to later sessions. A transactional outbox is planned to make future queue dispatch recoverable.
+The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. New submissions remain QUEUED until explicitly judged: there is no automatic publication or execution. Session 5 adds a separate trusted local controller for durable C++/Python judging, immutable private suites and atomic result persistence. See [local judging](docs/local-judging.md) and [ADR 0005](docs/adr/0005-immutable-local-judging.md). Distributed ownership, scheduling, production authentication and AI features belong to later sessions. Session 6 adds a transactional outbox.
 
 See [the architecture decision](docs/adr/0001-service-boundaries.md).

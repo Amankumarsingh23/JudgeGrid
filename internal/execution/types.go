@@ -29,6 +29,17 @@ func (e *InfrastructureError) Unwrap() error { return e.Cause }
 type Executor interface {
 	Execute(context.Context, Request) (Result, error)
 }
+
+// Preparer holds one bounded execution slot and one private artifact until Close.
+// Each Run starts a fresh restricted container; no mutable runtime state is reused.
+type Preparer interface {
+	Prepare(context.Context, Request) (Prepared, Result, error)
+}
+type Prepared interface {
+	Run(context.Context, []byte, Limits) (*PhaseResult, error)
+	Summary() Result
+	Close() error
+}
 type Limits struct {
 	WallTime    time.Duration `json:"wall_time_ns"`
 	MemoryBytes int64         `json:"memory_bytes"`

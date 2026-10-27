@@ -47,3 +47,12 @@ jobs:
         run: sh scripts/setup-sandbox.sh
       - name: Restricted sandbox enforcement tests (local controller)
         run: go test -race -tags=sandboxintegration -v ./internal/execution
+      - name: Local judge PostgreSQL
+        run: docker compose -f docker-compose.yml -f infra/local-judge.compose.yml up -d --wait postgres
+      - name: Real durable judging matrix
+        env:
+          JUDGEGRID_JUDGE_TESTS: '1'
+          TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
+        run: go test -race -tags=judgeintegration -v ./internal/judge
+      - if: always()
+        run: docker compose -f docker-compose.yml -f infra/local-judge.compose.yml down

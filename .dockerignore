@@ -4,3 +4,4 @@ bin
 coverage.out
 learning-notes
 .sandbox-images.local.json
+.judgegrid-test-bundles

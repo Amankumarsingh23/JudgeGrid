@@ -63,3 +63,6 @@ IDs and timestamps above are illustrative. Equivalent same-key requests return t
 ## Data flow
 
 HTTP parsing → trusted principal + service validation → PostgreSQL transaction → QUEUED response. The transaction checks idempotency, selects the current immutable problem version, and saves submission plus mapping together. No Redis dispatch or execution occurs in Session 2.
+# Session 5 local judging
+
+The separate `judge-local` CLI can evaluate an owned durable submission in an explicitly opted-in development environment. Existing submission reads reflect its final status and verdict. No judge endpoint or hidden-case/evidence endpoint is added; HTTP creation still only queues durable state without Redis publication. See [local judging](local-judging.md).

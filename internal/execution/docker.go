@@ -19,10 +19,11 @@ import (
 
 // Docker is a trusted LOCAL controller. Never put daemon access in an API/Redis worker container.
 type Docker struct {
-	images       Images
-	seccomp      string
-	slots        chan struct{}
-	active, peak atomic.Int32
+	images                                    Images
+	seccomp                                   string
+	slots                                     chan struct{}
+	active, peak                              atomic.Int32
+	preparations, compilations, runtimeStarts atomic.Int64
 }
 
 func NewDocker(images Images, profile string, slots int) (*Docker, error) {
@@ -110,95 +111,80 @@ func control(ctx context.Context, args ...string) ([]byte, error) {
 }
 
 func (d *Docker) Execute(ctx context.Context, req Request) (result Result, err error) {
-	if err = req.Validate(); err != nil {
+	artifact, result, err := d.Prepare(ctx, req)
+	if err != nil || artifact == nil {
 		return result, err
+	}
+	result.Run, err = artifact.Run(ctx, req.Stdin, req.RunLimits)
+	closeErr := artifact.Close()
+	result.Cleaned = artifact.Summary().Cleaned
+	return result, errors.Join(err, closeErr)
+}
+
+// Prepare compiles/writes source once. The returned artifact is local to this evaluation, not a global cache.
+func (d *Docker) Prepare(ctx context.Context, req Request) (artifact Prepared, result Result, err error) {
+	if err = req.Validate(); err != nil {
+		return nil, result, err
 	}
 	select {
 	case d.slots <- struct{}{}:
 	case <-ctx.Done():
-		return result, ctx.Err()
+		return nil, result, ctx.Err()
 	}
-	defer func() { <-d.slots }()
 	n := d.active.Add(1)
-	defer d.active.Add(-1)
 	for old := d.peak.Load(); n > old; old = d.peak.Load() {
 		if d.peak.CompareAndSwap(old, n) {
 			break
 		}
 	}
-	result.ExecutionID = "judgegrid-sandbox-" + strings.ToLower(rand.Text())
-	result.Policy = PolicyVersion
-	volume := result.ExecutionID + "-work"
-	var containers []string
-	volumeCreated := false
+	p := &preparedDocker{docker: d, request: req}
+	p.result = Result{ExecutionID: "judgegrid-sandbox-" + strings.ToLower(rand.Text()), Policy: PolicyVersion}
+	p.volume = p.result.ExecutionID + "-work"
 	defer func() {
-		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		var cleanupErrors []error
-		for _, name := range containers {
-			if _, e := control(cleanup, "rm", "--force", name); e != nil && !missingObject(e) {
-				cleanupErrors = append(cleanupErrors, e)
-			}
-		}
-		if volumeCreated {
-			if _, e := control(cleanup, "volume", "rm", volume); e != nil && !missingObject(e) {
-				cleanupErrors = append(cleanupErrors, e)
-			}
-		}
-		result.Cleaned = len(cleanupErrors) == 0
-		if !result.Cleaned {
-			err = errors.Join(err, &InfrastructureError{"cleanup", "remove", errors.Join(cleanupErrors...)})
+		if artifact == nil {
+			err = errors.Join(err, p.Close())
+			result.Cleaned = p.Summary().Cleaned
 		}
 	}()
+	result = p.result
 	setup, cancel := context.WithTimeout(ctx, 10*time.Second)
 	_, err = d.Environment(setup)
 	cancel()
 	if err != nil {
-		return result, err
+		return nil, result, err
 	}
-	// No image pulls are allowed in the execution path.
-	image := d.images.Python
+	p.image = d.images.Python
 	if req.Language == "cpp17" {
-		image = d.images.CPP
+		p.image = d.images.CPP
 	}
-	if _, err = control(ctx, "image", "inspect", image); err != nil {
-		return result, &InfrastructureError{"setup", "image", err}
+	if _, err = control(ctx, "image", "inspect", p.image); err != nil {
+		return nil, result, &InfrastructureError{"setup", "image", err}
 	}
-	// Name known before creation: even an uncertain create response can be cleaned up.
-	volumeCreated = true
-	if _, err = control(ctx, "volume", "create", "--label", "judgegrid.sandbox=true", volume); err != nil {
-		return result, &InfrastructureError{"setup", "volume", err}
-	}
-	phase := func(name string, limits Limits, input []byte, readonly bool, command []string) (*PhaseResult, error) {
-		container := result.ExecutionID + "-" + name
-		containers = append(containers, container)
-		args := d.createArgs(container, image, volume, limits, readonly, command)
-		if _, e := control(ctx, args...); e != nil {
-			return nil, &InfrastructureError{name, "create", e}
-		}
-		if e := d.verify(ctx, container, limits, readonly); e != nil {
-			return nil, &InfrastructureError{name, "policy", e}
-		}
-		return d.runPhase(ctx, container, image, name, limits, input)
+	p.volumeCreated = true
+	if _, err = control(ctx, "volume", "create", "--label", "judgegrid.sandbox=true", p.volume); err != nil {
+		return nil, result, &InfrastructureError{"setup", "volume", err}
 	}
 	if req.Language == "cpp17" {
-		result.Compile, err = phase("compile", req.CompileLimits, req.Source, false, []string{"/bin/sh", "-c", "cat > /work/main.cpp && exec g++ -std=c++17 -O2 -pipe /work/main.cpp -o /work/program"})
-		if err != nil || result.Compile.Outcome != Exited {
-			return result, err
+		d.compilations.Add(1)
+		p.result.Compile, err = p.phase(ctx, "compile", req.CompileLimits, req.Source, false, []string{"/bin/sh", "-c", "cat > /work/main.cpp && exec g++ -std=c++17 -O2 -pipe /work/main.cpp -o /work/program"})
+		result = p.result
+		if err != nil || p.result.Compile.Outcome != Exited {
+			return nil, result, err
 		}
-		result.Run, err = phase("run", req.RunLimits, req.Stdin, true, []string{"/work/program"})
 	} else {
-		result.Prepare, err = phase("prepare", req.CompileLimits, req.Source, false, []string{"python3", "-I", "-c", "import sys;open('/work/main.py','wb').write(sys.stdin.buffer.read(65537))"})
+		p.result.Prepare, err = p.phase(ctx, "prepare", req.CompileLimits, req.Source, false, []string{"python3", "-I", "-c", "import sys;open('/work/main.py','wb').write(sys.stdin.buffer.read(65537))"})
+		result = p.result
 		if err != nil {
-			return result, err
+			return nil, result, err
 		}
-		if result.Prepare.Outcome != Exited {
-			return result, &InfrastructureError{"prepare", "source", fmt.Errorf("source preparation failed: %s", result.Prepare.Outcome)}
+		if p.result.Prepare.Outcome != Exited {
+			return nil, result, &InfrastructureError{"prepare", "source", fmt.Errorf("source preparation failed: %s", p.result.Prepare.Outcome)}
 		}
-		result.Run, err = phase("run", req.RunLimits, req.Stdin, true, []string{"python3", "-I", "-B", "/work/main.py"})
 	}
-	return result, err
+	d.preparations.Add(1)
+	return p, p.result, nil
 }
+
 func (d *Docker) createArgs(name, image, volume string, limits Limits, readonly bool, command []string) []string {
 	mount := "type=volume,src=" + volume + ",dst=/work"
 	if readonly {
