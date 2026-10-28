@@ -3,7 +3,7 @@ services:
   minio:
     image: judgegrid-minio:session9
     build:
-      context: ..
+      context: .
       dockerfile: infra/objectstore/Dockerfile
     ports:
       - "127.0.0.1:19000:9000"
