@@ -17,11 +17,13 @@ var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-
 
 const (
 	SubmissionJob   = "submission"
+	RejudgeJob      = "rejudge"
 	DispatchTestJob = "dispatch_test"
 )
 
 // Job is a reference, never executable source. Attempt is not yet an ownership/fencing token.
 type Job struct {
+	JobID        string
 	Kind         string
 	SubmissionID string
 	Attempt      int64
@@ -29,12 +31,24 @@ type Job struct {
 }
 
 func (j Job) Validate() error {
+	if j.Kind == RejudgeJob {
+		if !uuid.MatchString(j.JobID) || !uuid.MatchString(j.SubmissionID) || !uuid.MatchString(j.EventID) || j.Attempt != 1 {
+			return ErrMalformed
+		}
+		return nil
+	}
+	if j.JobID != "" {
+		return ErrMalformed
+	}
 	if !uuid.MatchString(j.SubmissionID) || j.Attempt < 1 || (j.Kind != SubmissionJob && j.Kind != DispatchTestJob) || (j.EventID != "" && (!uuid.MatchString(j.EventID) || j.Kind != SubmissionJob)) {
 		return ErrMalformed
 	}
 	return nil
 }
 func (j Job) Values() map[string]any {
+	if j.Kind == RejudgeJob {
+		return map[string]any{"schema_version": "3", "kind": j.Kind, "submission_id": strings.ToLower(j.SubmissionID), "attempt": "1", "event_id": strings.ToLower(j.EventID), "job_id": strings.ToLower(j.JobID)}
+	}
 	if j.EventID != "" {
 		return map[string]any{"schema_version": "2", "kind": j.Kind, "submission_id": strings.ToLower(j.SubmissionID), "attempt": strconv.FormatInt(j.Attempt, 10), "event_id": strings.ToLower(j.EventID)}
 	}
@@ -47,6 +61,17 @@ type Message struct {
 }
 
 func (m Message) Job() (Job, error) {
+	if m.Values["schema_version"] == "3" {
+		if len(m.Values) != 6 {
+			return Job{}, ErrMalformed
+		}
+		v := func(k string) string { s, _ := m.Values[k].(string); return strings.ToLower(s) }
+		j := Job{Kind: v("kind"), SubmissionID: v("submission_id"), EventID: v("event_id"), JobID: v("job_id"), Attempt: 1}
+		if v("attempt") != "1" || j.Kind != RejudgeJob {
+			return Job{}, ErrMalformed
+		}
+		return j, j.Validate()
+	}
 	if len(m.Values) != 4 && len(m.Values) != 5 {
 		return Job{}, ErrMalformed
 	}

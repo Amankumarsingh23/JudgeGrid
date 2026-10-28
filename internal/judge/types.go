@@ -52,6 +52,7 @@ type TestResult struct {
 	Evidence Evidence       `json:"evidence"`
 }
 type Report struct {
+	CacheHit      bool           `json:"cache_hit,omitempty"`
 	Verdict       domain.Verdict `json:"verdict"`
 	Image         string         `json:"runtime_image"`
 	Policy        string         `json:"execution_policy"`
@@ -64,6 +65,7 @@ type Report struct {
 func (r Report) Fingerprint() string { data, _ := json.Marshal(r); return bundles.Hash(data) }
 
 type Summary struct {
+	CacheHit         bool            `json:"cache_hit,omitempty"`
 	RunID            string          `json:"evaluation_run_id"`
 	SubmissionID     string          `json:"submission_id"`
 	ProblemVersionID int64           `json:"problem_version_id"`
@@ -81,6 +83,7 @@ type Summary struct {
 	Replayed         bool            `json:"replayed"`
 }
 type Work struct {
+	JobID                      string
 	Owner                      string
 	Generation                 int
 	RunID                      string

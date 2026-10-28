@@ -14,6 +14,9 @@ func validEvidence(e Evidence) bool {
 
 // ValidateReport rechecks deterministic aggregation before SQL writes; it does not trust a supplied final verdict alone.
 func ValidateReport(work Work, r Report) error {
+	if r.CacheHit && (work.Submission.Language != "cpp17" || r.Compile == nil || r.Verdict == "CE") {
+		return ErrConfiguration
+	}
 	if !r.Cleaned || !pinnedImage.MatchString(r.Image) || r.Policy != execution.PolicyVersion || len(work.Reference.Cases) == 0 {
 		return ErrConfiguration
 	}

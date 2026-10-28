@@ -102,6 +102,15 @@ func TestPrepareOnceStopFirstAndCleanup(t *testing.T) {
 	if err = ValidateReport(w, r); err != nil {
 		t.Fatal(err)
 	}
+	r.CacheHit = true
+	if ValidateReport(w, r) != nil {
+		t.Fatal("verified C++ cache evidence rejected")
+	}
+	w.Submission.Language = "python3"
+	if ValidateReport(w, r) == nil {
+		t.Fatal("Python claimed compilation-cache evidence")
+	}
+	w.Submission.Language = "cpp17"
 	r.Verdict = "AC"
 	if ValidateReport(w, r) == nil {
 		t.Fatal("false AC accepted")
@@ -114,6 +123,10 @@ func TestCompileLimitAndCleanupFailure(t *testing.T) {
 		r, err := Evaluate(context.Background(), e, w, b)
 		if err != nil || r.Verdict != "CE" || r.CompileReason != "compile_"+string(o) || ValidateReport(w, r) != nil {
 			t.Fatalf("%+v %v", r, err)
+		}
+		r.CacheHit = true
+		if ValidateReport(w, r) == nil {
+			t.Fatal("compilation failure claimed cache hit")
 		}
 	}
 	p := &fakeArtifact{out: []string{"wrong"}, closeErr: errors.New("cleanup unavailable")}

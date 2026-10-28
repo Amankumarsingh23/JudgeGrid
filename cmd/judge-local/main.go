@@ -50,7 +50,7 @@ func run() error {
 	if *seed && *id != "" {
 		return fmt.Errorf("choose --seed-tests or --submission")
 	}
-	store, err := bundles.Open(*root)
+	store, err := bundles.Configured(*root)
 	if err != nil {
 		return fmt.Errorf("private bundle store unavailable")
 	}
@@ -84,6 +84,9 @@ func run() error {
 		return fmt.Errorf("sandbox policy unavailable")
 	}
 	defer backend.Close()
+	if err = backend.ConfigureCache(db); err != nil {
+		return fmt.Errorf("cache configuration unavailable")
+	}
 	summary, err := (judge.Service{Repository: storage.NewRepository(db), Bundles: store, Engine: backend}).Run(ctx, cfg.DevPrincipal, *id)
 	output := map[string]any{"evaluation": summary, "controller_operations": backend.Counts()}
 	if err != nil {

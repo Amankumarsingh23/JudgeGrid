@@ -55,7 +55,7 @@ func New(store Store, b bundles.Store, e execution.Preparer, principal, owner st
 	return &Handler{store, b, e, principal, owner, o, make(chan struct{}, o.Concurrency)}, nil
 }
 func (h *Handler) Handle(ctx context.Context, j queue.Job, _ string) (worker.Outcome, error) {
-	if j.Kind != queue.SubmissionJob || j.EventID == "" {
+	if (j.Kind != queue.SubmissionJob && j.Kind != queue.RejudgeJob) || j.EventID == "" {
 		return worker.Unsupported, nil
 	}
 	select {

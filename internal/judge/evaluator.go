@@ -95,6 +95,7 @@ func Evaluate(ctx context.Context, engine execution.Preparer, work Work, suite b
 	}
 	artifact, prepared, err := engine.Prepare(ctx, req)
 	report.Policy = prepared.Policy
+	report.CacheHit = prepared.CacheHit
 	report.Tests = []TestResult{}
 	report.Compile = evidence(prepared.Compile)
 	if prepared.Compile != nil {

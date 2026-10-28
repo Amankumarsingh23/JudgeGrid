@@ -87,13 +87,16 @@ func run() error {
 		return fmt.Errorf("sandbox policy unavailable")
 	}
 	defer engine.Close()
+	if err = engine.ConfigureCache(db); err != nil {
+		return fmt.Errorf("cache configuration unavailable")
+	}
 	if _, err = engine.Environment(setup); err != nil {
 		return fmt.Errorf("sandbox capabilities unavailable")
 	}
 	if err = engine.CheckImages(setup); err != nil {
 		return fmt.Errorf("pinned runtime image capability unavailable")
 	}
-	b, err := bundles.Open(*root)
+	b, err := bundles.Configured(*root)
 	if err != nil {
 		return fmt.Errorf("suite store unavailable")
 	}

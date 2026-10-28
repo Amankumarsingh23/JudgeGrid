@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/buildcache"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 
 // Docker is a trusted LOCAL controller. Never put daemon access in an API/Redis worker container.
 type Docker struct {
+	cache                                     *buildcache.Cache
 	images                                    Images
 	seccomp                                   string
 	controller                                string
@@ -223,11 +225,23 @@ func (d *Docker) Prepare(ctx context.Context, req Request) (artifact Prepared, r
 		return nil, result, &InfrastructureError{"setup", "volume", err}
 	}
 	if req.Language == "cpp17" {
-		d.compilations.Add(1)
-		p.result.Compile, err = p.phase(ctx, "compile", req.CompileLimits, req.Source, false, []string{"/bin/sh", "-c", "umask 077; set -e; cat > /work/main.cpp; g++ -std=c++17 -O2 -pipe /work/main.cpp -o /work/program; test -f /work/program; test ! -L /work/program; test $(wc -c < /work/program) -le 16777216; chmod 0500 /work/program; chmod 0400 /work/main.cpp"})
-		result = p.result
-		if err != nil || p.result.Compile.Outcome != Exited {
-			return nil, result, err
+		hit, cacheErr := p.cachedCompile(ctx)
+		if cacheErr != nil {
+			return nil, p.result, &InfrastructureError{"compile", "cache", cacheErr}
+		}
+		if !hit {
+			d.compilations.Add(1)
+			if d.cache != nil {
+				d.cache.RecordBuild()
+			}
+			p.result.Compile, err = p.phase(ctx, "compile", req.CompileLimits, req.Source, false, []string{"/bin/sh", "-c", "umask 077; set -e; cat > /work/main.cpp; touch -d @0 /work/main.cpp; SOURCE_DATE_EPOCH=0 g++ -std=c++17 -O2 -pipe /work/main.cpp -o /work/program; test -f /work/program; test ! -L /work/program; test $(wc -c < /work/program) -le 16777216; chmod 0500 /work/program; chmod 0400 /work/main.cpp"})
+			result = p.result
+			if err != nil || p.result.Compile.Outcome != Exited {
+				return nil, result, err
+			}
+			if err = p.publishCompile(ctx); err != nil {
+				return nil, p.result, &InfrastructureError{"compile", "cache-publish", err}
+			}
 		}
 	} else {
 		p.result.Prepare, err = p.phase(ctx, "prepare", req.CompileLimits, req.Source, false, []string{"python3", "-I", "-c", "import os,sys;fd=os.open('/work/main.py',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o400);f=os.fdopen(fd,'wb');f.write(sys.stdin.buffer.read(65537));f.close()"})

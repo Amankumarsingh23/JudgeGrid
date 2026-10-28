@@ -103,18 +103,21 @@ func (r CreateRequest) Fingerprint() string {
 }
 
 type Submission struct {
-	ID               string    `json:"submission_id"`
-	ProblemID        int64     `json:"problem_id"`
-	ProblemVersionID int64     `json:"problem_version_id"`
-	ProblemVersion   int       `json:"problem_version"`
-	PrincipalID      string    `json:"-"`
-	Language         string    `json:"language"`
-	SourceCode       string    `json:"source_code"`
-	Status           Status    `json:"status"`
-	Verdict          *Verdict  `json:"verdict"`
-	StateVersion     int64     `json:"state_version"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	CurrentEvaluationID *string   `json:"current_evaluation_run_id,omitempty"`
+	CurrentVersionID    *int64    `json:"current_problem_version_id,omitempty"`
+	OriginalVerdict     *Verdict  `json:"original_verdict,omitempty"`
+	ID                  string    `json:"submission_id"`
+	ProblemID           int64     `json:"problem_id"`
+	ProblemVersionID    int64     `json:"problem_version_id"`
+	ProblemVersion      int       `json:"problem_version"`
+	PrincipalID         string    `json:"-"`
+	Language            string    `json:"language"`
+	SourceCode          string    `json:"source_code"`
+	Status              Status    `json:"status"`
+	Verdict             *Verdict  `json:"verdict"`
+	StateVersion        int64     `json:"state_version"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 type Problem struct {

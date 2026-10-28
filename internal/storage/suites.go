@@ -82,7 +82,7 @@ func BindSuite(ctx context.Context, pool *pgxpool.Pool, version int64, ref bundl
 	}
 	return tx.Commit(ctx)
 }
-func SeedSuites(ctx context.Context, pool *pgxpool.Pool, store *bundles.Local) error {
+func SeedSuites(ctx context.Context, pool *pgxpool.Pool, store bundles.Publisher) error {
 	for _, slug := range []string{"two-sum", "maximum"} {
 		bundle, _ := bundles.Demo(slug)
 		ref, err := store.Put(bundle)

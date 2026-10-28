@@ -71,10 +71,10 @@ func (s *evaluationSession) Close() error {
 	return err
 }
 
-const summaryColumns = `id::text,submission_id::text,problem_version_id,generation,status,final_verdict,failure_code,tests_run,tests_passed,tests_total,evaluator_version,runtime_image,started_at,finished_at`
+const summaryColumns = `id::text,submission_id::text,problem_version_id,generation,status,final_verdict,failure_code,tests_run,tests_passed,tests_total,evaluator_version,runtime_image,started_at,finished_at,cache_hit`
 
 func scanSummary(row scanner) (summary judge.Summary, err error) {
-	err = row.Scan(&summary.RunID, &summary.SubmissionID, &summary.ProblemVersionID, &summary.Generation, &summary.Status, &summary.Verdict, &summary.FailureCode, &summary.TestsRun, &summary.TestsPassed, &summary.TestsTotal, &summary.Evaluator, &summary.Image, &summary.StartedAt, &summary.FinishedAt)
+	err = row.Scan(&summary.RunID, &summary.SubmissionID, &summary.ProblemVersionID, &summary.Generation, &summary.Status, &summary.Verdict, &summary.FailureCode, &summary.TestsRun, &summary.TestsPassed, &summary.TestsTotal, &summary.Evaluator, &summary.Image, &summary.StartedAt, &summary.FinishedAt, &summary.CacheHit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = domain.ErrNotFound
 	}
@@ -96,7 +96,7 @@ func (s *evaluationSession) Begin(ctx context.Context) (work judge.Work, err err
 		return work, err
 	}
 	if work.Submission.Status == domain.Completed || work.Submission.Status == domain.Failed {
-		summary, e := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE submission_id=$1 ORDER BY generation DESC LIMIT 1`, s.id))
+		summary, e := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE submission_id=$1 AND job_id IS NULL ORDER BY generation DESC LIMIT 1`, s.id))
 		if e != nil {
 			return work, domain.ErrConflict
 		}
@@ -148,6 +148,9 @@ func (r *Repository) CommitEvaluation(ctx context.Context, work judge.Work, repo
 	return completeEvaluation(ctx, r.pool, work, report)
 }
 func completeEvaluation(ctx context.Context, db transactionBeginner, work judge.Work, report judge.Report) (judge.Summary, error) {
+	if work.JobID != "" {
+		return completeJob(ctx, db, work, report)
+	}
 	if err := judge.ValidateReport(work, report); err != nil {
 		return judge.Summary{}, err
 	}
@@ -232,7 +235,7 @@ func completeEvaluation(ctx context.Context, db transactionBeginner, work judge.
 	if report.CompileReason != "" {
 		reason = report.CompileReason
 	}
-	_, err = tx.Exec(ctx, `UPDATE evaluation_runs SET status='COMPLETED',final_verdict=$2,runtime_image=$3,execution_policy=$4,compile_evidence=$5,compile_reason=$6,result_sha=$7,tests_run=$8,tests_passed=$9,finished_at=clock_timestamp() WHERE id=$1 AND status='RUNNING'`, work.RunID, report.Verdict, report.Image, report.Policy, compile, reason, fingerprint, len(report.Tests), passed)
+	_, err = tx.Exec(ctx, `UPDATE evaluation_runs SET status='COMPLETED',final_verdict=$2,runtime_image=$3,execution_policy=$4,compile_evidence=$5,compile_reason=$6,result_sha=$7,tests_run=$8,tests_passed=$9,cache_hit=$10,finished_at=clock_timestamp() WHERE id=$1 AND status='RUNNING'`, work.RunID, report.Verdict, report.Image, report.Policy, compile, reason, fingerprint, len(report.Tests), passed, report.CacheHit)
 	if err != nil {
 		return judge.Summary{}, err
 	}

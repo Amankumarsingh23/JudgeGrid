@@ -12,7 +12,7 @@ func (r *Repository) RegisterSandbox(ctx context.Context, p execution.Provenance
 		return execution.ErrInvalid
 	}
 	var owner string
-	err := r.pool.QueryRow(ctx, `SELECT owner_id FROM execution_ownership WHERE submission_id=$1 AND run_id=$2 AND generation=$3 AND state='ACTIVE' AND lease_expires_at>clock_timestamp()`, p.SubmissionID, p.RunID, p.Generation).Scan(&owner)
+	err := r.pool.QueryRow(ctx, `SELECT owner_id FROM sandbox_authority WHERE submission_id=$1 AND run_id=$2 AND generation=$3 AND state='ACTIVE' AND lease_expires_at>clock_timestamp()`, p.SubmissionID, p.RunID, p.Generation).Scan(&owner)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func (r *Repository) ProtectSandbox(ctx context.Context, id string, action func(
 		return err
 	}
 	var allowed bool
-	err = tx.QueryRow(ctx, `SELECT x.state='OPEN' AND o.state='ACTIVE' AND o.lease_expires_at>clock_timestamp() AND o.run_id=x.run_id AND o.generation=x.generation FROM sandbox_executions x JOIN execution_ownership o ON o.submission_id=x.submission_id WHERE x.execution_id=$1`, id).Scan(&allowed)
+	err = tx.QueryRow(ctx, `SELECT x.state='OPEN' AND o.state='ACTIVE' AND o.lease_expires_at>clock_timestamp() AND o.run_id=x.run_id AND o.generation=x.generation FROM sandbox_executions x JOIN sandbox_authority o ON o.run_id=x.run_id WHERE x.execution_id=$1`, id).Scan(&allowed)
 	if err != nil {
 		return err
 	}
@@ -96,14 +96,14 @@ func (r *Repository) ReconcileSandbox(ctx context.Context, p execution.Provenanc
 	var active bool
 	var currentRun string
 	var generation int
-	if err = tx.QueryRow(ctx, `SELECT run_id::text,generation FROM execution_ownership WHERE submission_id=$1`, p.SubmissionID).Scan(&currentRun, &generation); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT run_id::text,generation FROM sandbox_authority WHERE scope_id=(SELECT COALESCE(job_id,submission_id) FROM evaluation_runs WHERE id=$1)`, p.RunID).Scan(&currentRun, &generation); err != nil {
 		return "unknown", err
 	}
 	if generation < p.Generation {
 		return "mismatch", nil
 	}
 	if currentRun == p.RunID && generation == p.Generation {
-		if err = tx.QueryRow(ctx, `SELECT state='ACTIVE' AND lease_expires_at>clock_timestamp() AND run_id=$2::uuid AND generation=$3 FROM execution_ownership WHERE submission_id=$1 FOR UPDATE`, p.SubmissionID, p.RunID, p.Generation).Scan(&active); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT state='ACTIVE' AND lease_expires_at>clock_timestamp() AND run_id=$2::uuid AND generation=$3 FROM sandbox_authority WHERE scope_id=(SELECT COALESCE(job_id,submission_id) FROM evaluation_runs WHERE id=$1)`, p.RunID, p.RunID, p.Generation).Scan(&active); err != nil {
 			return "unavailable", err
 		}
 	}

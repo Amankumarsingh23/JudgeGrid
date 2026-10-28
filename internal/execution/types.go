@@ -103,6 +103,7 @@ type PhaseResult struct {
 	MeasurementNote string        `json:"measurement_note"`
 }
 type Result struct {
+	CacheHit    bool         `json:"cache_hit"`
 	ExecutionID string       `json:"execution_id"`
 	Policy      string       `json:"policy"`
 	Prepare     *PhaseResult `json:"prepare,omitempty"`

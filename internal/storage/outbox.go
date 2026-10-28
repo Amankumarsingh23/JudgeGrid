@@ -19,7 +19,7 @@ func (r *Repository) Claim(ctx context.Context, limit int, ttl time.Duration) ([
  WHERE (e.status='PENDING' AND e.next_attempt_at<=statement_timestamp()) OR(e.status='CLAIMED' AND e.claim_expires_at<=statement_timestamp())
  ORDER BY e.created_at,e.id FOR UPDATE OF e SKIP LOCKED LIMIT $1)
  UPDATE outbox_events e SET status='CLAIMED',claim_generation=claim_generation+1,claim_token=gen_random_uuid(),claim_expires_at=clock_timestamp()+$2::bigint*interval '1 millisecond',attempts=attempts+1
-	 FROM selected s WHERE e.id=s.id RETURNING e.id::text,e.submission_id::text,e.claim_token::text,e.claim_generation,e.intent_generation,e.payload_version,e.attempts-e.retry_base`, limit, ttl.Milliseconds())
+	 FROM selected s WHERE e.id=s.id RETURNING e.id::text,e.submission_id::text,e.claim_token::text,e.claim_generation,e.intent_generation,e.payload_version,e.attempts-e.retry_base,COALESCE(e.job_id::text,'')`, limit, ttl.Milliseconds())
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func (r *Repository) Claim(ctx context.Context, limit int, ttl time.Duration) ([
 	events := []outbox.Event{}
 	for rows.Next() {
 		var e outbox.Event
-		if err = rows.Scan(&e.ID, &e.SubmissionID, &e.Token, &e.Generation, &e.IntentGeneration, &e.Version, &e.Attempts); err != nil {
+		if err = rows.Scan(&e.ID, &e.SubmissionID, &e.Token, &e.Generation, &e.IntentGeneration, &e.Version, &e.Attempts, &e.JobID); err != nil {
 			return nil, err
 		}
 		events = append(events, e)
@@ -113,7 +113,7 @@ func (r *Repository) BackfillOutbox(ctx context.Context, id string) error {
 	if status != "QUEUED" {
 		return domain.ErrConflict
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO outbox_events(submission_id) VALUES($1) ON CONFLICT(submission_id,event_type,intent_generation) DO NOTHING`, id); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO outbox_events(submission_id) VALUES($1) ON CONFLICT(submission_id,event_type,intent_generation) WHERE job_id IS NULL DO NOTHING`, id); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

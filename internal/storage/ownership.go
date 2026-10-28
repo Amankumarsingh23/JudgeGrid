@@ -19,6 +19,9 @@ func setFence(ctx context.Context, tx pgx.Tx, w judge.Work) error {
 }
 func fmtGeneration(n int) string { return strconv.Itoa(n) }
 func authorizeWork(ctx context.Context, tx pgx.Tx, w judge.Work) error {
+	if w.JobID != "" {
+		return authorizeJobWork(ctx, tx, w)
+	}
 	var principal string
 	if err := tx.QueryRow(ctx, `SELECT principal_id FROM submissions WHERE id=$1 FOR UPDATE`, w.Submission.ID).Scan(&principal); err != nil {
 		return err
@@ -34,6 +37,9 @@ func authorizeWork(ctx context.Context, tx pgx.Tx, w judge.Work) error {
 	return setFence(ctx, tx, w)
 }
 func (r *Repository) RenewExecution(ctx context.Context, w judge.Work, ttl time.Duration) error {
+	if w.JobID != "" {
+		return r.renewJob(ctx, w, ttl)
+	}
 	if ttl < time.Second || ttl > 5*time.Minute {
 		return domain.ErrInvalid
 	}
@@ -55,6 +61,9 @@ func (r *Repository) RenewExecution(ctx context.Context, w judge.Work, ttl time.
 	return tx.Commit(ctx)
 }
 func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string, j queue.Job, ttl time.Duration, max int) (w judge.Work, err error) {
+	if j.Kind == queue.RejudgeJob {
+		return r.claimJob(ctx, principal, owner, j, ttl, max)
+	}
 	if j.Validate() != nil || j.Kind != queue.SubmissionJob || j.EventID == "" || j.Attempt != 1 || principal == "" || owner == "" || len(owner) > 200 || ttl < time.Second || ttl > 5*time.Minute || max < 1 || max > 5 {
 		return w, domain.ErrInvalid
 	}
@@ -75,7 +84,7 @@ func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string
 		return w, err
 	}
 	if w.Submission.Status == domain.Completed || w.Submission.Status == domain.Failed {
-		summary, e := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE submission_id=$1 ORDER BY generation DESC LIMIT 1`, j.SubmissionID))
+		summary, e := scanSummary(tx.QueryRow(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE submission_id=$1 AND job_id IS NULL ORDER BY generation DESC LIMIT 1`, j.SubmissionID))
 		if e != nil {
 			var reason string
 			e = tx.QueryRow(ctx, `SELECT reason FROM execution_rejections WHERE submission_id=$1 AND event_id=$2`, j.SubmissionID, j.EventID).Scan(&reason)
@@ -188,6 +197,9 @@ func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string
 }
 
 func (r *Repository) FailExecution(ctx context.Context, w judge.Work, code string, retry bool) error {
+	if w.JobID != "" {
+		return r.failJob(ctx, w, code, retry)
+	}
 	switch code {
 	case "sandbox_infrastructure", "evaluation_canceled", "bundle_verification_failed", "invalid_configuration":
 	default:
@@ -225,22 +237,32 @@ func (r *Repository) RecoveryJobs(ctx context.Context, principal string, limit i
 	if limit < 1 || limit > 16 {
 		return nil, domain.ErrInvalid
 	}
+	jobWork, jobErr := r.recoverRejudges(ctx, principal, limit)
+	if jobErr != nil {
+		return nil, jobErr
+	}
+	if len(jobWork) == limit {
+		return jobWork, nil
+	}
 	rows, err := r.pool.Query(ctx, `WITH candidates AS (
  (SELECT o.submission_id FROM execution_ownership o JOIN submissions s ON s.id=o.submission_id WHERE s.principal_id=$1 AND o.mode='agent' AND o.state='ACTIVE' AND o.lease_expires_at<=statement_timestamp() ORDER BY o.lease_expires_at,o.submission_id LIMIT $2)
  UNION (SELECT o.submission_id FROM execution_ownership o JOIN submissions s ON s.id=o.submission_id WHERE s.principal_id=$1 AND o.mode='agent' AND o.state='RETRY' AND o.next_attempt_at<=statement_timestamp() ORDER BY o.next_attempt_at,o.submission_id LIMIT $2)
- UNION (SELECT s.id FROM submissions s JOIN outbox_events e ON e.submission_id=s.id AND e.intent_generation=1 AND e.status='PUBLISHED' WHERE s.principal_id=$1 AND s.status='QUEUED' AND NOT EXISTS(SELECT 1 FROM execution_ownership WHERE submission_id=s.id) ORDER BY s.created_at,s.id LIMIT $2))
- SELECT e.id::text,e.submission_id::text,e.intent_generation FROM candidates c JOIN outbox_events e ON e.submission_id=c.submission_id AND e.intent_generation=1 AND e.status='PUBLISHED' ORDER BY e.created_at,e.id LIMIT $2`, principal, limit)
+ UNION (SELECT s.id FROM submissions s JOIN outbox_events e ON e.submission_id=s.id AND e.intent_generation=1 AND e.job_id IS NULL AND e.status='PUBLISHED' WHERE s.principal_id=$1 AND s.status='QUEUED' AND NOT EXISTS(SELECT 1 FROM execution_ownership WHERE submission_id=s.id) ORDER BY s.created_at,s.id LIMIT $2))
+ SELECT e.id::text,e.submission_id::text,e.intent_generation FROM candidates c JOIN outbox_events e ON e.submission_id=c.submission_id AND e.intent_generation=1 AND e.job_id IS NULL AND e.status='PUBLISHED' ORDER BY e.created_at,e.id LIMIT $2`, principal, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	jobs := []queue.Job{}
+	jobs := jobWork
 	for rows.Next() {
 		j := queue.Job{Kind: queue.SubmissionJob}
 		if err = rows.Scan(&j.EventID, &j.SubmissionID, &j.Attempt); err != nil {
 			return nil, err
 		}
 		jobs = append(jobs, j)
+		if len(jobs) == limit {
+			break
+		}
 	}
 	return jobs, rows.Err()
 }

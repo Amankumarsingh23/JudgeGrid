@@ -87,3 +87,7 @@ docker compose up -d --wait
 ## Correctness boundary
 
 One PostgreSQL transaction guarantees durable intent with accepted creation. It cannot atomically commit Redis XADD and PostgreSQL publication status. A crash after XADD or a lost response therefore permits repeated stream entries with one logical event UUID. Stable identity makes idempotent effects possible; it does not itself implement an execution consumer. Current tests prove zero duplicated judging effects while that consumer is disabled, and preserve the existing unique development receipt and evaluation-result invariants. Distributed execution ownership/fencing remains for Session 7.
+
+## Session 9 logical evaluation references
+
+Schema 3 adds kind=rejudge plus evaluation job UUID to the thin submission/event reference. Its attempt=1 is a logical intent value, not the execution attempt generation. A rejudge request commits one distinct job/outbox intent; a partial unique index preserves initial-submission uniqueness separately. Relay claims, uncertain XADD recovery and publication fencing are shared. Consumers verify the exact job/submission/event relationship against a published record before claims. Duplicate publication can create multiple stream entries while leaving one job and one set of effects. Ordinary receipt workers refuse real/rejudge execution work. See [rejudging](rejudging.md).

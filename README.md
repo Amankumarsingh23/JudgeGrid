@@ -130,4 +130,6 @@ The default worker verifies connectivity, serves internal health endpoints and w
 
 Session 8 verifies retained sandbox policy and adds a separate trusted, database-authorized orphan reconciler with dry-run default. See [safe reconciliation](docs/sandbox.md#session-8-trusted-orphan-reconciliation), [security evidence](docs/sandbox-security-controls.md), and [ADR 0008](docs/adr/0008-sandbox-provenance-and-reconciliation.md).
 
+Session 9 adds explicit private S3 bundle storage, verified C++ compilation caching, immutable version publication and owner-scoped development rejudging. New logical evaluation jobs preserve the original submission and history; a guarded pointer selects committed results. These remain trusted host operations. See [object storage](docs/object-storage.md), [compilation cache](docs/compilation-cache.md), [rejudging](docs/rejudging.md), and [ADR 0009](docs/adr/0009-immutable-objects-cache-and-rejudge-jobs.md).
+
 See [the architecture decision](docs/adr/0001-service-boundaries.md).

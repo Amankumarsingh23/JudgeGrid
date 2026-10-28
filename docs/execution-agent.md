@@ -66,3 +66,9 @@ A lease is time-bounded permission; a heartbeat is a request to extend that perm
 ## Sandbox provenance and orphan operations (Session 8)
 
 Updated agents register immutable run/submission/generation provenance before Docker resource creation. Apply migration 0007 before startup. Creation and reaping share a per-execution database guard, while normal heartbeats run independently. PostgreSQL leases authorize cleanup; Redis pending status does not. The standalone trusted `sandbox-reconcile` command defaults to dry-run and requires separate explicit apply. See [safe reconciliation commands](sandbox.md#session-8-trusted-orphan-reconciliation). No reconciliation binary or Docker authority is added to API, worker or outbox-relay images.
+
+## Session 9 storage, cache and rejudge jobs
+
+The host agent accepts validated schema-three rejudge references as well as initial schema-two events. Logical evaluation job identity is distinct from attempt generation. Heartbeats, retry budgets, result fencing, DB recovery and sandbox provenance resolve the correct job. Initial submissions remain sealed. Rejudge request/selection ordering is described in [rejudging](rejudging.md).
+
+Choose `BUNDLE_BACKEND=s3` and trusted host S3 configuration explicitly; set `COMPILATION_CACHE_ENABLED=true` to opt into the verified C++ cache. An unavailable remote store is an infrastructure failure, never a local fallback or user verdict. Ordinary service images still have no Docker authority or S3 credentials. `judge-admin` is a separate development-only executable. See [storage operations](object-storage.md) and [cache operations](compilation-cache.md).

@@ -25,3 +25,13 @@ The existing `integration` suite now includes atomic intent creation, backlog ad
 Session 7 adds `TestExecution*` database ownership/fencing/budget tests. On the trusted sandbox host, `JUDGEGRID_AGENT_TESTS=1 TEST_DATABASE_URL=... TEST_REDIS_ADDR=... go test -race -tags=agentintegration -v ./internal/judge` exercises real automatic judging, four process-crash boundaries, actual database/Redis TCP outages and graceful/expired execution drains. Run it separately from sandbox and judge suites on the same Docker daemon. The optional local overlay exposes PostgreSQL on 15432 and Redis on 16379 only on loopback.
 
 After enabling development identity and the optional isolated relay, run `python scripts/outbox_smoke.py --stream test:judgegrid:local-outbox`. See [outbox operations](../docs/outbox.md) for the exact setup. Real references remain QUEUED; these checks do not enable distributed execution. Run the sandbox and judge integration suites sequentially on the same Docker daemon because the existing sandbox cancellation test polls daemon-wide container labels.
+
+## Session 9 integration
+
+The optional MinIO overlay builds a pinned upstream source release. With actual PostgreSQL/Redis/Docker and explicit TEST_S3_ENDPOINT, TEST_S3_ACCESS_KEY, TEST_S3_SECRET_KEY and TEST_MINIO_CONTAINER for the owned development service, run:
+
+```sh
+go test -race -tags=agentintegration,session9integration -run TestS9 -v ./internal/judge
+```
+
+This includes real private-object integrity/restart tests, 10-request compilation deduplication, cache poisoning/eviction, a killed compiler controller before cache publication, actual storage/cache outages and an object-backed AC-to-WA rejudge. No external prerequisite is silently skipped. The ordinary integration suite also verifies publication staging, logical-job idempotency, selection ordering and stale-attempt fencing; its synthetic report/fixture-ELF tests validate database contracts and do not substitute for the real compiler demonstrations. CI executes baseline suites and the new suite separately with race instrumentation.

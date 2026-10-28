@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/buildcache"
 	"strings"
 	"sync"
 	"time"
 )
 
 type preparedDocker struct {
+	claim                 *buildcache.Claim
 	mu                    sync.Mutex
 	docker                *Docker
 	request               Request
@@ -96,6 +98,7 @@ func (p *preparedDocker) Close() error {
 		return p.closeErr
 	}
 	p.closed = true
+	defer p.releaseBuild()
 	defer func() { p.docker.active.Add(-1); <-p.docker.slots }()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

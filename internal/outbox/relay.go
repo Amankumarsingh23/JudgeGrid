@@ -15,12 +15,17 @@ import (
 var ErrClaimLost = errors.New("outbox claim expired or replaced")
 
 type Event struct {
+	JobID                        string
 	ID, SubmissionID, Token      string
 	Generation, IntentGeneration int64
 	Version, Attempts            int
 }
 
 func (e Event) Job() (queue.Job, error) {
+	if e.Version == 3 {
+		j := queue.Job{Kind: queue.RejudgeJob, SubmissionID: e.SubmissionID, EventID: e.ID, JobID: e.JobID, Attempt: e.IntentGeneration}
+		return j, j.Validate()
+	}
 	j := queue.Job{Kind: queue.SubmissionJob, SubmissionID: e.SubmissionID, Attempt: e.IntentGeneration, EventID: e.ID}
 	if e.Version != 2 {
 		return j, queue.ErrMalformed

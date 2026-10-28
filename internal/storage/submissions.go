@@ -117,7 +117,11 @@ func (r *Repository) Create(ctx context.Context, principal, key string, req doma
 }
 
 func (r *Repository) Get(ctx context.Context, principal, id string) (domain.Submission, error) {
-	return scanSubmission(r.pool.QueryRow(ctx, `SELECT `+columns+` FROM submissions s JOIN problem_versions v ON v.id=s.problem_version_id WHERE s.id=$1 AND s.principal_id=$2`, id, principal))
+	s, e := scanSubmission(r.pool.QueryRow(ctx, `SELECT `+columns+` FROM submissions s JOIN problem_versions v ON v.id=s.problem_version_id WHERE s.id=$1 AND s.principal_id=$2`, id, principal))
+	if e != nil {
+		return s, e
+	}
+	return r.displaySelection(ctx, s)
 }
 func (r *Repository) List(ctx context.Context, principal string, limit int, after *domain.Cursor) ([]domain.Submission, error) {
 	query := `SELECT ` + columns + ` FROM submissions s JOIN problem_versions v ON v.id=s.problem_version_id WHERE s.principal_id=$1`
@@ -140,7 +144,34 @@ func (r *Repository) List(ctx context.Context, principal string, limit int, afte
 		}
 		result = append(result, s)
 	}
-	return result, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range result {
+		result[i], err = r.displaySelection(ctx, result[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+func (r *Repository) displaySelection(ctx context.Context, s domain.Submission) (domain.Submission, error) {
+	var verdict domain.Verdict
+	var run string
+	var version int64
+	e := r.pool.QueryRow(ctx, `SELECT r.id::text,r.problem_version_id,r.final_verdict FROM selected_evaluations x JOIN evaluation_runs r ON r.id=x.run_id WHERE x.submission_id=$1 AND r.status='COMPLETED'`, s.ID).Scan(&run, &version, &verdict)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return s, nil
+	}
+	if e != nil {
+		return s, e
+	}
+	s.OriginalVerdict = s.Verdict
+	s.Verdict = &verdict
+	s.CurrentEvaluationID = &run
+	s.CurrentVersionID = &version
+	return s, nil
 }
 func (r *Repository) Problem(ctx context.Context, slug string) (p domain.Problem, err error) {
 	err = r.pool.QueryRow(ctx, `SELECT p.id,p.slug,p.title,v.id,v.version_number,v.statement,v.time_limit_ms,v.memory_limit_kb FROM problems p JOIN problem_versions v ON v.id=p.current_version_id WHERE p.slug=$1`, slug).Scan(&p.ID, &p.Slug, &p.Title, &p.VersionID, &p.Version, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitKB)
