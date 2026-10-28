@@ -128,4 +128,6 @@ GitHub Actions runs these checks plus migrations, seeds and live API smoke tests
 
 The default worker verifies connectivity, serves internal health endpoints and waits for shutdown. Only explicit development configuration enables receipt processing. The transactional outbox publishes through a separately enabled relay. Session 7 adds an explicitly authorized host-side development execution agent with PostgreSQL leases, fencing and database-driven recovery; ordinary production execution stays disabled. See [agent operations](docs/execution-agent.md), [ADR 0007](docs/adr/0007-execution-leases-and-fencing.md), [outbox operations](docs/outbox.md) and [local judging](docs/local-judging.md). API, ordinary worker and relay images contain no trusted controller or Docker authority.
 
+Session 8 verifies retained sandbox policy and adds a separate trusted, database-authorized orphan reconciler with dry-run default. See [safe reconciliation](docs/sandbox.md#session-8-trusted-orphan-reconciliation), [security evidence](docs/sandbox-security-controls.md), and [ADR 0008](docs/adr/0008-sandbox-provenance-and-reconciliation.md).
+
 See [the architecture decision](docs/adr/0001-service-boundaries.md).

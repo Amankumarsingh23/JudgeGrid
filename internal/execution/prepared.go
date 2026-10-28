@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,16 +19,38 @@ type preparedDocker struct {
 	volumeCreated, closed bool
 	closeErr              error
 	runs                  int
+	provenance            Provenance
+	registry              Registry
+	registered            bool
+}
+
+func (p *preparedDocker) protect(ctx context.Context, action func() error) error {
+	if p.registry != nil {
+		return p.registry.ProtectSandbox(ctx, p.result.ExecutionID, action)
+	}
+	return action()
 }
 
 func (p *preparedDocker) phase(ctx context.Context, name string, limits Limits, input []byte, readonly bool, command []string) (*PhaseResult, error) {
 	container := p.result.ExecutionID + "-" + name
 	p.containers = append(p.containers, container)
-	if _, err := control(ctx, p.docker.createArgs(container, p.image, p.volume, limits, readonly, command)...); err != nil {
-		return nil, &InfrastructureError{name, "create", err}
-	}
-	if err := p.docker.verify(ctx, container, limits, readonly); err != nil {
-		return nil, &InfrastructureError{name, "policy", err}
+	if err := p.protect(ctx, func() error {
+		if _, e := control(ctx, p.docker.createArgs(container, p.image, p.volume, limits, readonly, command, p.provenance.Labels(name))...); e != nil {
+			return e
+		}
+		if e := p.docker.verify(ctx, container, limits, readonly, policyExpectation{p.image, p.volume, command}); e != nil {
+			return e
+		}
+		r, e := InspectResource(ctx, "container", container)
+		if e != nil {
+			return e
+		}
+		if !labelsEqual(r.Labels, p.provenance.Labels(name)) || r.Name != container {
+			return ErrInvalid
+		}
+		return nil
+	}); err != nil {
+		return nil, &InfrastructureError{name, "create/policy", err}
 	}
 	return p.docker.runPhase(ctx, container, p.image, name, limits, input)
 }
@@ -58,7 +81,7 @@ func (p *preparedDocker) Run(ctx context.Context, input []byte, limits Limits) (
 	container := p.result.ExecutionID + "-" + name
 	cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, removeErr := control(cleanup, "rm", "--force", container); removeErr != nil && !missingObject(removeErr) {
+	if removeErr := RemoveOwned(cleanup, "container", container, p.provenance, name); removeErr != nil && !missingObject(removeErr) {
 		err = errors.Join(err, &InfrastructureError{"cleanup", "runtime", removeErr})
 	} else {
 		p.containers = p.containers[:len(p.containers)-1]
@@ -78,12 +101,22 @@ func (p *preparedDocker) Close() error {
 	defer cancel()
 	var failures []error
 	for _, name := range p.containers {
-		if _, err := control(ctx, "rm", "--force", name); err != nil && !missingObject(err) {
+		_, role, parseErr := ParseLabels(p.provenance.Labels(strings.TrimPrefix(name, p.provenance.ExecutionID+"-")))
+		if parseErr != nil {
+			failures = append(failures, parseErr)
+			continue
+		}
+		if err := RemoveOwned(ctx, "container", name, p.provenance, role); err != nil && !missingObject(err) {
 			failures = append(failures, err)
 		}
 	}
 	if p.volumeCreated {
-		if _, err := control(ctx, "volume", "rm", p.volume); err != nil && !missingObject(err) {
+		if err := RemoveOwned(ctx, "volume", p.volume, p.provenance, "artifact"); err != nil && !missingObject(err) {
+			failures = append(failures, err)
+		}
+	}
+	if len(failures) == 0 && p.registered {
+		if err := p.registry.FinishSandbox(ctx, p.result.ExecutionID); err != nil {
 			failures = append(failures, err)
 		}
 	}

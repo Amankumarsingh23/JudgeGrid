@@ -82,6 +82,9 @@ func RuntimeVerdict(p *execution.PhaseResult) (domain.Verdict, error) {
 	}
 }
 func Evaluate(ctx context.Context, engine execution.Preparer, work Work, suite bundles.Bundle) (report Report, err error) {
+	if work.RunID != "" {
+		ctx = execution.WithIdentity(ctx, work.RunID, work.Submission.ID, work.Owner, work.Generation)
+	}
 	if err = suite.Verify(work.Reference); err != nil {
 		return report, err
 	}
@@ -186,6 +189,9 @@ func (s Service) Run(ctx context.Context, principal, id string) (Summary, error)
 		return summary, nil
 	}
 	evaluation, cancel := context.WithTimeout(ctx, 120*time.Second)
+	if registry, ok := s.Repository.(execution.Registry); ok {
+		evaluation = execution.WithRegistry(evaluation, registry)
+	}
 	defer cancel()
 	suite, loadErr := s.Bundles.Load(work.Reference.Hash)
 	var report Report

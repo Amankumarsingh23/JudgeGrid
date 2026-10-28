@@ -222,6 +222,20 @@ type crashStore struct {
 	mode string
 }
 
+func (s crashStore) ProtectSandbox(ctx context.Context, id string, action func() error) error {
+	return s.Repository.ProtectSandbox(ctx, id, func() error {
+		if e := action(); e != nil {
+			return e
+		}
+		if s.mode == "container_created" {
+			if _, e := execution.InspectResource(ctx, "container", id+"-prepare"); e == nil {
+				boundary(id)
+			}
+		}
+		return nil
+	})
+}
+
 func (s crashStore) ClaimExecution(ctx context.Context, p, o string, j queue.Job, ttl time.Duration, max int) (judge.Work, error) {
 	w, e := s.Repository.ClaimExecution(ctx, p, o, j, ttl, max)
 	if e == nil && s.mode == "claim" {

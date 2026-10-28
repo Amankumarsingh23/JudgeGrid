@@ -84,3 +84,22 @@ $env:JUDGEGRID_SANDBOX_TESTS = '1'
 Quote dotted native test flags in PowerShell. These native Windows integration tests use Docker's Linux backend; they are not Windows race-detector runs. Linux unit/race checks run separately, and the hosted dedicated sandbox job uses race-enabled tests on its Linux controller host. Tagged tests fail when explicit opt-in or required runtime setup is missing; they do not silently skip.
 
 `python scripts/check-service-isolation.py` verifies ordinary Compose services lack daemon socket/endpoint authority, privileged mode and host PID/network namespaces. See [the threat model](sandbox-threat-model.md), [ADR 0004](adr/0004-local-sandbox-execution.md) and [vendored profile origin](../infra/sandbox/README.md) for policy and limitations.
+
+## Session 8: trusted orphan reconciliation
+
+Build `go build -o sandbox-reconcile ./cmd/sandbox-reconcile` on the trusted controller host. Apply migration 0007 through the existing management command before running updated agents. Configure `APP_ENV=development` and `DATABASE_URL` for that host. Docker must point to the same trusted Linux daemon used by the agent. Keep development opt-in and production-disabled defaults.
+
+```sh
+# Read-only default: inspect decisions first.
+./sandbox-reconcile --allow-local-reconciliation --max-resources=64
+# Explicitly authorize bounded cleanup of database-proven orphans.
+./sandbox-reconcile --allow-local-reconciliation --max-resources=64 --apply
+```
+
+PowerShell uses the same flags with `.\sandbox-reconcile.exe` and `$env:APP_ENV='development'`. Maximum inventory is 128 and total command deadline is 60 seconds. An oversized inventory fails without deletion; investigate rather than sweeping by prefix. Reports expose execution ID, decision and resource count only. Decisions include active, eligible, reaped, unknown, mismatch and interrupted/unavailable errors. Dry-run never deletes. Unknown/unregistered fixtures and legacy namespaces are not automatically deleted. Review their exact provenance separately; never use a broad Docker prune as recovery.
+
+The registry is committed before resource creation. A per-execution PostgreSQL lock guards creation and cleanup; active current leases are preserved. Old-generation cleanup does not lock the newer owner. Apply re-enumerates and revalidates resources under that lock. Exact container IDs and volume name/creation/labels are rechecked before deletion. Docker provides no atomic conditional volume delete; the daemon administrator remains trusted. Database/schema failure prevents deletion. If cleanup is interrupted after removing a container, retry safely removes the remaining volume. Physical deletion cannot roll back with SQL.
+
+Normal cleanup removes resources and closes the registry record. A process kill bypasses defer; the in-container watchdog limits computation and the reconciler later removes stopped or running expired resources. Fenced result writes and resource termination solve different problems. A crashed host may also leave controller seccomp temporary copies; this reconciler deliberately never accepts arbitrary host paths from labels.
+
+See [security evidence](sandbox-security-controls.md), [threat model](sandbox-threat-model.md) and [ADR 0008](adr/0008-sandbox-provenance-and-reconciliation.md). Aggregate artifact-volume quotas, CPU-time and peak-memory measurement remain unavailable.

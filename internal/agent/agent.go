@@ -74,6 +74,9 @@ func (h *Handler) Handle(ctx context.Context, j queue.Job, _ string) (worker.Out
 		return worker.AlreadyHandled, nil
 	}
 	evaluation, cancel := context.WithTimeout(ctx, 120*time.Second)
+	if registry, ok := h.Store.(execution.Registry); ok {
+		evaluation = execution.WithRegistry(evaluation, registry)
+	}
 	defer cancel()
 	heartbeat, stopHeartbeat := context.WithCancel(context.Background())
 	defer stopHeartbeat()

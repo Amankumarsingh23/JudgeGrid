@@ -62,3 +62,7 @@ After all demo work is terminal, stop the host agent, stop the optional relay an
 ## Interview explanations
 
 A lease is time-bounded permission; a heartbeat is a request to extend that permission under the same identity. XAUTOCLAIM moves delivery ownership, while a PostgreSQL transaction grants execution authority. Fencing rejects a paused zombie worker's old generation even if cancellation never reached it. Physical execution may repeat after crashes; exactly-once authoritative effects come from fenced atomic result transactions and verified replay. Crash before commit leaves recoverable work; crash after commit/before ACK reads the terminal result and ACKs without rerunning. A database outage is uncertainty, not evidence that a submitted program is wrong.
+
+## Sandbox provenance and orphan operations (Session 8)
+
+Updated agents register immutable run/submission/generation provenance before Docker resource creation. Apply migration 0007 before startup. Creation and reaping share a per-execution database guard, while normal heartbeats run independently. PostgreSQL leases authorize cleanup; Redis pending status does not. The standalone trusted `sandbox-reconcile` command defaults to dry-run and requires separate explicit apply. See [safe reconciliation commands](sandbox.md#session-8-trusted-orphan-reconciliation). No reconciliation binary or Docker authority is added to API, worker or outbox-relay images.
