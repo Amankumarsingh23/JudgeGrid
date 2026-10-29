@@ -128,7 +128,9 @@ func TestS9CrashBeforeCachePublication(t *testing.T) {
 	}
 	waitAuto(t, 7*time.Second, func() bool {
 		var expired bool
-		f.db.QueryRow(f.ctx, `SELECT lease_expires_at<=clock_timestamp() FROM compilation_cache WHERE cache_key=$1`, old.Key).Scan(&expired)
+		// Cache construction and execution ownership have independent leases.
+		// A live execution must not be stolen merely because its cache claim expired.
+		f.db.QueryRow(f.ctx, `SELECT c.lease_expires_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM sandbox_authority a WHERE a.submission_id=$2 AND a.state='ACTIVE' AND a.lease_expires_at>clock_timestamp()) FROM compilation_cache c WHERE c.cache_key=$1`, old.Key, j.SubmissionID).Scan(&expired)
 		return expired
 	})
 	if _, e = reconcile.Run(f.ctx, f.repo, reconcile.Docker{}, true, 128); e != nil {

@@ -1,0 +1,10 @@
+# Explicit trusted local browser overlay; credentials live only in PostgreSQL sessions.
+services:
+  api:
+    environment:
+      HTTP_ADDR: :8080
+      LOCAL_WEB_ENABLED: 'true'
+      LOCAL_WEB_ORIGIN: ${LOCAL_WEB_ORIGIN:-http://localhost:8080}
+      APP_ENV: development
+      DEV_AUTH_ENABLED: 'true'
+      DEV_PRINCIPAL: ${DEV_PRINCIPAL:-local-web-operator}

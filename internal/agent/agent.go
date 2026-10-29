@@ -8,6 +8,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/execution"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/judge"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/scheduling"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/worker"
 	"log/slog"
 	"sync/atomic"
@@ -37,6 +38,8 @@ func (o Options) Validate() error {
 }
 
 type Handler struct {
+	Fair             bool
+	Scope            []string
 	Store            Store
 	Bundles          bundles.Store
 	Engine           execution.Preparer
@@ -52,12 +55,38 @@ func New(store Store, b bundles.Store, e execution.Preparer, principal, owner st
 	if principal == "" || owner == "" || len(owner) > 200 {
 		return nil, errors.New("agent identity required")
 	}
-	return &Handler{store, b, e, principal, owner, o, make(chan struct{}, o.Concurrency)}, nil
+	return &Handler{Store: store, Bundles: b, Engine: e, Principal: principal, Owner: owner, Options: o, slots: make(chan struct{}, o.Concurrency)}, nil
+}
+func (h *Handler) EnableFair(scope []string) error {
+	if _, ok := h.Store.(scheduling.Store); !ok || len(scope) < 1 || len(scope) > 128 {
+		return errors.New("bounded scheduler scope required")
+	}
+	seen := map[string]bool{}
+	for _, p := range scope {
+		if len(p) < 1 || len(p) > 200 || seen[p] {
+			return errors.New("invalid scheduler scope")
+		}
+		seen[p] = true
+	}
+	h.Scope = append([]string(nil), scope...)
+	h.Fair = true
+	return nil
 }
 func (h *Handler) Handle(ctx context.Context, j queue.Job, _ string) (worker.Outcome, error) {
 	if (j.Kind != queue.SubmissionJob && j.Kind != queue.RejudgeJob) || j.EventID == "" {
 		return worker.Unsupported, nil
 	}
+	if h.Fair {
+		check, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if e := h.Store.(scheduling.Store).ValidateNotification(check, h.Scope, j); e != nil {
+			return worker.Retry, errors.New("durable notification unavailable")
+		}
+		return worker.Handled, nil
+	}
+	return h.execute(ctx, j, h.Principal)
+}
+func (h *Handler) execute(ctx context.Context, j queue.Job, principal string) (worker.Outcome, error) {
 	select {
 	case h.slots <- struct{}{}:
 	case <-ctx.Done():
@@ -65,13 +94,16 @@ func (h *Handler) Handle(ctx context.Context, j queue.Job, _ string) (worker.Out
 	}
 	defer func() { <-h.slots }()
 	setup, cancelSetup := context.WithTimeout(ctx, 3*time.Second)
-	w, err := h.Store.ClaimExecution(setup, h.Principal, h.Owner, j, h.Options.Lease, h.Options.Attempts)
+	w, err := h.Store.ClaimExecution(setup, principal, h.Owner, j, h.Options.Lease, h.Options.Attempts)
 	cancelSetup()
 	if err != nil {
 		return worker.Retry, errors.New("execution claim unavailable")
 	}
 	if w.Existing != nil {
 		return worker.AlreadyHandled, nil
+	}
+	if h.Fair {
+		slog.Info("scheduled execution admitted", "principal", principal, "submission_id", w.Submission.ID, "job_id", w.JobID, "run_id", w.RunID, "generation", w.Generation)
 	}
 	evaluation, cancel := context.WithTimeout(ctx, 120*time.Second)
 	if registry, ok := h.Store.(execution.Registry); ok {
@@ -138,6 +170,9 @@ func (h *Handler) Handle(ctx context.Context, j queue.Job, _ string) (worker.Out
 		}
 		_, err = h.Store.CommitEvaluation(persist, w, report)
 		if err == nil {
+			if h.Fair {
+				slog.Info("scheduled evaluation committed", "principal", principal, "submission_id", w.Submission.ID, "run_id", w.RunID, "verdict", report.Verdict)
+			}
 			return worker.Handled, nil
 		}
 		select {
@@ -149,6 +184,9 @@ func (h *Handler) Handle(ctx context.Context, j queue.Job, _ string) (worker.Out
 	return worker.Retry, errors.New("execution completion not confirmed")
 }
 func (h *Handler) Run(ctx context.Context, s *queue.Streams) error {
+	if h.Fair {
+		return h.runFair(ctx, s)
+	}
 	ctx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 	o := worker.DefaultOptions()

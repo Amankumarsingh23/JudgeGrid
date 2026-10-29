@@ -91,6 +91,9 @@ func (s *evaluationSession) Begin(ctx context.Context) (work judge.Work, err err
 		return work, err
 	}
 	defer tx.Rollback(ctx)
+	if err = admitScheduler(ctx, tx, s.id, s.principal); err != nil {
+		return work, err
+	}
 	work.Submission, err = scanSubmission(tx.QueryRow(ctx, `SELECT `+columns+` FROM submissions s JOIN problem_versions v ON v.id=s.problem_version_id WHERE s.id=$1 AND s.principal_id=$2 FOR UPDATE OF s`, s.id, s.principal))
 	if err != nil {
 		return work, err

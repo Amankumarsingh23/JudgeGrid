@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -102,9 +103,35 @@ func run() error {
 	}
 	redis := queue.Open(cfg.RedisAddr, cfg.RedisPassword)
 	defer redis.Close()
-	h, err := agent.New(storage.NewRepository(db), b, engine, cfg.DevPrincipal, "agent-"+worker.NewInstanceID(), o)
+	repo := storage.NewRepository(db)
+	h, err := agent.New(repo, b, engine, cfg.DevPrincipal, "agent-"+worker.NewInstanceID(), o)
 	if err != nil {
 		return err
+	}
+	policy, err := repo.SchedulerPolicy(setup)
+	if err != nil {
+		return fmt.Errorf("scheduler authority unavailable")
+	}
+	if policy.Enabled && os.Getenv("AGENT_FAIR_ENABLED") != "true" {
+		return fmt.Errorf("enabled scheduler requires explicit fair agent mode")
+	}
+	if os.Getenv("AGENT_FAIR_ENABLED") == "true" {
+		scope := strings.Split(os.Getenv("AGENT_PRINCIPALS"), ",")
+		if !policy.Enabled {
+			return fmt.Errorf("scheduler must be enabled first")
+		}
+		if err = h.EnableFair(scope); err != nil {
+			return err
+		}
+		for _, enrolled := range policy.Principals {
+			found := false
+			for _, allowed := range scope {
+				found = found || allowed == enrolled
+			}
+			if !found {
+				return fmt.Errorf("fair agent scope must cover every enrolled principal")
+			}
+		}
 	}
 	slog.Warn("trusted host development auto-judging enabled", "principal", cfg.DevPrincipal, "stream", stream, "lease", o.Lease, "heartbeat", o.Heartbeat)
 	return h.Run(ctx, redis.Streams(stream, group))

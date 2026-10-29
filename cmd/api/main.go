@@ -37,11 +37,34 @@ func run() error {
 	defer db.Close()
 	redis := queue.Open(cfg.RedisAddr, cfg.RedisPassword)
 	defer redis.Close()
-	service := submission.New(storage.NewRepositoryWithBacklog(db, cfg.OutboxBacklogLimit), cfg.RequestTimeout)
-	if cfg.DevAuthEnabled {
+	repo := storage.NewRepositoryWithBacklog(db, cfg.OutboxBacklogLimit)
+	service := submission.New(repo, cfg.RequestTimeout)
+	if cfg.DevAuthEnabled && os.Getenv("LOCAL_WEB_ENABLED") != "true" {
 		slog.Warn("development identity enabled; all callers share the configured local principal")
 	}
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: api.Routes(cfg.CheckTimeout, db.Ping, redis.Ping, service, api.DevelopmentPrincipal(cfg.DevAuthEnabled, cfg.DevPrincipal)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	auth := api.DevelopmentPrincipal(cfg.DevAuthEnabled, cfg.DevPrincipal)
+	var handler http.Handler
+	if os.Getenv("LOCAL_WEB_ENABLED") == "true" {
+		if cfg.AppEnv != "development" || !cfg.DevAuthEnabled {
+			return errors.New("local web requires explicit development authentication")
+		}
+		origin := os.Getenv("LOCAL_WEB_ORIGIN")
+		if origin == "" {
+			origin = "http://localhost:8080"
+		}
+		web, e := api.NewLocalWeb(repo, origin)
+		if e != nil {
+			return e
+		}
+		auth = web.Resolve
+		handler = web.Wrap(api.Routes(cfg.CheckTimeout, db.Ping, redis.Ping, service, auth))
+		if os.Getenv("HTTP_ADDR") == "" {
+			cfg.HTTPAddr = "127.0.0.1:8080"
+		}
+	} else {
+		handler = api.Routes(cfg.CheckTimeout, db.Ping, redis.Ping, service, auth)
+	}
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	result := make(chan error, 1)
 	go func() { slog.Info("api listening", "address", cfg.HTTPAddr); result <- server.ListenAndServe() }()
 	select {

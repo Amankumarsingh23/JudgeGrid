@@ -18,6 +18,8 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: sh scripts/check.sh
+      - name: Frontend JavaScript syntax
+        run: node --check internal/api/ui/app.js
       - run: python3 scripts/check-service-isolation.py
       - run: docker compose up --build -d --wait
       - run: docker compose run --rm migrate manage check
@@ -67,6 +69,12 @@ jobs:
           TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
           TEST_REDIS_ADDR: 127.0.0.1:16379
         run: go test -race -tags=agentintegration -v ./internal/judge
+      - name: Fair automatic judging, observed phases and durable SSE rejudge
+        env:
+          JUDGEGRID_AGENT_TESTS: '1'
+          TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
+          TEST_REDIS_ADDR: 127.0.0.1:16379
+        run: go test -race -tags=agentintegration,session10integration -run TestS10 -v ./internal/judge
       - name: Immutable MinIO, real compilation cache and versioned rejudge fault matrix
         env:
           JUDGEGRID_AGENT_TESTS: '1'

@@ -54,6 +54,17 @@ func (p *preparedDocker) phase(ctx context.Context, name string, limits Limits, 
 	}); err != nil {
 		return nil, &InfrastructureError{name, "create/policy", err}
 	}
+	if observer, ok := p.registry.(phaseObserver); ok {
+		kind := "running"
+		if name == "prepare" || (name == "compile" && p.claim != nil && p.claim.Hit) {
+			kind = "preparing"
+		} else if name == "compile" {
+			kind = "compiling"
+		}
+		ctx = context.WithValue(ctx, observationKey{}, observationCallback(func(observed context.Context) error {
+			return observer.ObserveSandboxPhase(observed, p.provenance, kind)
+		}))
+	}
 	return p.docker.runPhase(ctx, container, p.image, name, limits, input)
 }
 func (p *preparedDocker) Run(ctx context.Context, input []byte, limits Limits) (result *PhaseResult, err error) {

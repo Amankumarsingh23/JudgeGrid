@@ -79,6 +79,9 @@ func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string
 	if !valid {
 		return w, domain.ErrNotFound
 	}
+	if err = admitScheduler(ctx, tx, j.SubmissionID, principal); err != nil {
+		return w, err
+	}
 	w.Submission, err = scanSubmission(tx.QueryRow(ctx, `SELECT `+columns+` FROM submissions s JOIN problem_versions v ON v.id=s.problem_version_id WHERE s.id=$1 AND s.principal_id=$2 FOR UPDATE OF s`, j.SubmissionID, principal))
 	if err != nil {
 		return w, err

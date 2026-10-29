@@ -67,6 +67,14 @@ A lease is time-bounded permission; a heartbeat is a request to extend that perm
 
 Updated agents register immutable run/submission/generation provenance before Docker resource creation. Apply migration 0007 before startup. Creation and reaping share a per-execution database guard, while normal heartbeats run independently. PostgreSQL leases authorize cleanup; Redis pending status does not. The standalone trusted `sandbox-reconcile` command defaults to dry-run and requires separate explicit apply. See [safe reconciliation commands](sandbox.md#session-8-trusted-orphan-reconciliation). No reconciliation binary or Docker authority is added to API, worker or outbox-relay images.
 
+## Session 10 fair mode
+
+After applying migrations 0011–0012, the offline operator can enable the shared scheduler with `judge-admin --allow-development-administration --action scheduler-config --file <private-policy.json>`. See [local web operations](local-web.md). Set `AGENT_FAIR_ENABLED=true` and `AGENT_PRINCIPALS=alice,bob` on every trusted agent; each CLI allowlist must cover the enrolled pool. Both independent processes use the same PostgreSQL turn/capacity authority. Notifications are validated/ACKed separately from admission; bounded DB polling recovers work without Redis retention. Existing lease/generation guards still decide ownership. Recovering an expired scope spends a fair turn; no hot requeue loop is added. A stale candidate simply defers by AGENT_RECOVERY.
+
+The global limit counts current valid database leases across initial/rejudge ownership. Physical expired containers remain the reconciler's responsibility. A principal's active limit must be below a multi-slot global limit. Work order is oldest non-active scope within each principal, then least recently admitted eligible principal; retry backoff can hold that principal's head. Scope changes require controller restart. Startup refuses enabled scheduler policy without explicit fair mode. Standalone local evaluation cannot bypass enabled scheduler admission. Stop agents before disabling policy or restoring the default API.
+
+Safe structured admission/completion logs include principal, submission/run/job identity, generation and verdict. Actual compiling/running events require observed Docker start plus the same active execution fence. A cache restore reports preparation instead of a compiler start. Session 11 can build telemetry from these identities without adding source or hidden-test material to logs.
+
 ## Session 9 storage, cache and rejudge jobs
 
 The host agent accepts validated schema-three rejudge references as well as initial schema-two events. Logical evaluation job identity is distinct from attempt generation. Heartbeats, retry budgets, result fencing, DB recovery and sandbox provenance resolve the correct job. Initial submissions remain sealed. Rejudge request/selection ordering is described in [rejudging](rejudging.md).

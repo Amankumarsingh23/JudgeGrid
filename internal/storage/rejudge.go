@@ -29,6 +29,9 @@ func (r *Repository) RequestRejudge(ctx context.Context, principal, key, id stri
 	}
 	defer tx.Rollback(ctx)
 	var eligible bool
+	if e = lockScheduler(ctx, tx); e != nil {
+		return result, e
+	}
 	e = tx.QueryRow(ctx, `SELECT s.status='COMPLETED' AND s.language IN ('cpp17','python3') AND v.problem_id=s.problem_id AND v.version_number>original.version_number AND EXISTS(SELECT 1 FROM problem_test_suites WHERE problem_version_id=v.id) FROM submissions s JOIN problem_versions original ON original.id=s.problem_version_id JOIN problem_versions v ON v.id=$3 WHERE s.id=$1 AND s.principal_id=$2 FOR UPDATE OF s`, id, principal, version).Scan(&eligible)
 	if e != nil {
 		return result, e
@@ -104,6 +107,9 @@ func (r *Repository) claimJob(ctx context.Context, principal, owner string, j qu
 	}
 	if !valid {
 		return w, domain.ErrNotFound
+	}
+	if e = admitScheduler(ctx, tx, j.JobID, principal); e != nil {
+		return w, e
 	}
 	// Keep submission -> job -> ownership order consistent with completion/failure.
 	var lockedSubmission string
@@ -330,6 +336,13 @@ func (r *Repository) recoverRejudges(ctx context.Context, principal string, limi
 
 // History returns only sanitized summaries, scoped to the authenticated owner.
 func (r *Repository) History(ctx context.Context, principal, id string) ([]judge.Summary, error) {
+	var visible bool
+	if e := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM submissions WHERE id=$1 AND principal_id=$2)`, id, principal).Scan(&visible); e != nil {
+		return nil, e
+	}
+	if !visible {
+		return nil, domain.ErrNotFound
+	}
 	rows, e := r.pool.Query(ctx, `SELECT `+summaryColumns+` FROM evaluation_runs WHERE submission_id=$1 AND EXISTS(SELECT 1 FROM submissions WHERE id=$1 AND principal_id=$2) ORDER BY started_at,id LIMIT 100`, id, principal)
 	if e != nil {
 		return nil, e

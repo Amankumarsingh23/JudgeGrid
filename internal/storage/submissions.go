@@ -51,6 +51,9 @@ func (r *Repository) Create(ctx context.Context, principal, key string, req doma
 		return domain.Submission{}, false, err
 	}
 	defer tx.Rollback(ctx)
+	if err = lockScheduler(ctx, tx); err != nil {
+		return domain.Submission{}, false, err
+	}
 	// Lock this principal/key pair before checking for a replay. Hash collisions only serialize unrelated requests.
 	lockKey, _ := json.Marshal([]string{principal, key})
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, string(lockKey)); err != nil {
@@ -179,6 +182,22 @@ func (r *Repository) Problem(ctx context.Context, slug string) (p domain.Problem
 		err = domain.ErrNotFound
 	}
 	return
+}
+func (r *Repository) Problems(ctx context.Context) ([]domain.Problem, error) {
+	rows, e := r.pool.Query(ctx, `SELECT p.id,p.slug,p.title,v.id,v.version_number,v.statement,v.time_limit_ms,v.memory_limit_kb FROM problems p JOIN problem_versions v ON v.id=p.current_version_id JOIN problem_test_suites t ON t.problem_version_id=v.id ORDER BY p.slug LIMIT 100`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []domain.Problem{}
+	for rows.Next() {
+		var p domain.Problem
+		if e = rows.Scan(&p.ID, &p.Slug, &p.Title, &p.VersionID, &p.Version, &p.Statement, &p.TimeLimitMS, &p.MemoryLimitKB); e != nil {
+			return nil, e
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }
 
 // Transition is internal-only. Future worker claims must additionally carry attempt fencing.

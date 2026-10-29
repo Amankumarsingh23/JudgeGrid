@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"github.com/jackc/pgx/v5/pgconn"
 	"io"
 	"log/slog"
 	"mime"
@@ -33,6 +34,27 @@ func Routes(timeout time.Duration, database, redis Check, service *submission.Se
 	h := &submissionHandler{service: service, auth: auth}
 	mux.HandleFunc("POST /api/v1/submissions", h.create)
 	mux.HandleFunc("GET /api/v1/submissions/{id}", h.get)
+	mux.HandleFunc("GET /api/v1/submissions/{id}/events", h.events)
+	mux.HandleFunc("GET /api/v1/submissions/{id}/evaluations", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := h.principal(w, r)
+		if !ok {
+			return
+		}
+		rows, e := service.History(r.Context(), p, r.PathValue("id"))
+		if e != nil {
+			apiError(w, e)
+			return
+		}
+		respond(w, 200, rows)
+	})
+	mux.HandleFunc("GET /api/v1/problems", func(w http.ResponseWriter, r *http.Request) {
+		rows, e := service.Problems(r.Context())
+		if e != nil {
+			apiError(w, e)
+			return
+		}
+		respond(w, 200, rows)
+	})
 	mux.HandleFunc("GET /api/v1/submissions", h.list)
 	mux.HandleFunc("GET /api/v1/problems/{slug}", func(w http.ResponseWriter, r *http.Request) {
 		p, err := service.Problem(r.Context(), r.PathValue("slug"))
@@ -64,6 +86,10 @@ func (h *submissionHandler) principal(w http.ResponseWriter, r *http.Request) (s
 func (h *submissionHandler) create(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.principal(w, r)
 	if !ok {
+		return
+	}
+	if err := h.service.AdmitRequest(r.Context(), p); err != nil {
+		apiError(w, err)
 		return
 	}
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -146,6 +172,24 @@ func errorBody(code, message string) any {
 }
 func apiError(w http.ResponseWriter, err error) {
 	status, code, message := 503, "unavailable", "service temporarily unavailable"
+	var limit *domain.LimitError
+	if errors.As(err, &limit) {
+		w.Header().Set("Retry-After", strconv.Itoa(limit.RetryAfter))
+		respond(w, 429, errorBody(limit.Code, "request capacity reached; retry later"))
+		return
+	}
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) && (pg.Code == "PZ429" || pg.Code == "PZ503") {
+		status = 503
+		code = "scheduler_capacity"
+		if pg.Code == "PZ429" {
+			status = 429
+			code = "pending_capacity"
+		}
+		w.Header().Set("Retry-After", "1")
+		respond(w, status, errorBody(code, "evaluation admission unavailable; retry later"))
+		return
+	}
 	switch {
 	case errors.Is(err, domain.ErrBacklog):
 		w.Header().Set("Retry-After", "30")

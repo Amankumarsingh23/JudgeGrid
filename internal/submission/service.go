@@ -2,8 +2,12 @@ package submission
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/judge"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/progress"
 	"regexp"
 	"strings"
 	"time"
@@ -23,7 +27,42 @@ type Service struct {
 	timeout time.Duration
 }
 
+func (s *Service) AdmitRequest(ctx context.Context, principal string) error {
+	if !principalValid(principal) {
+		return domain.ErrUnauthorized
+	}
+	if limiter, ok := s.repo.(interface {
+		AdmitRequest(context.Context, string) error
+	}); ok {
+		ctx, cancel := context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+		return limiter.AdmitRequest(ctx, principal)
+	}
+	return nil
+}
+
 func New(repo Repository, timeout time.Duration) *Service { return &Service{repo, timeout} }
+func (s *Service) ProgressStore() (progress.Store, bool) {
+	v, ok := s.repo.(progress.Store)
+	return v, ok
+}
+func (s *Service) History(ctx context.Context, p, id string) ([]judge.Summary, error) {
+	if !principalValid(p) {
+		return nil, domain.ErrUnauthorized
+	}
+	if !ValidID(id) {
+		return nil, domain.ErrNotFound
+	}
+	r, ok := s.repo.(interface {
+		History(context.Context, string, string) ([]judge.Summary, error)
+	})
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	return r.History(ctx, p, id)
+}
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
@@ -75,7 +114,7 @@ func (s *Service) List(ctx context.Context, principal string, limit int, cursor 
 			return domain.Page{}, domain.ErrInvalid
 		}
 		var c domain.Cursor
-		if json.Unmarshal(data, &c) != nil || c.CreatedAt.IsZero() || !ValidID(c.ID) {
+		if json.Unmarshal(data, &c) != nil || c.CreatedAt.IsZero() || !ValidID(c.ID) || c.OwnerHash != fmt.Sprintf("%x", sha256.Sum256([]byte(principal))) {
 			return domain.Page{}, domain.ErrInvalid
 		}
 		after = &c
@@ -92,7 +131,7 @@ func (s *Service) List(ctx context.Context, principal string, limit int, cursor 
 	}
 	if len(items) > limit {
 		last := items[limit-1]
-		data, _ := json.Marshal(domain.Cursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		data, _ := json.Marshal(domain.Cursor{CreatedAt: last.CreatedAt, ID: last.ID, OwnerHash: fmt.Sprintf("%x", sha256.Sum256([]byte(principal)))})
 		page.NextCursor = base64.RawURLEncoding.EncodeToString(data)
 		page.Items = items[:limit]
 	}
@@ -105,4 +144,15 @@ func (s *Service) Problem(ctx context.Context, slug string) (domain.Problem, err
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	return s.repo.Problem(ctx, slug)
+}
+func (s *Service) Problems(ctx context.Context) ([]domain.Problem, error) {
+	repo, ok := s.repo.(interface {
+		Problems(context.Context) ([]domain.Problem, error)
+	})
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	return repo.Problems(ctx)
 }

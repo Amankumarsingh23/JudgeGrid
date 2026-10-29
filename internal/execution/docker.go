@@ -404,6 +404,8 @@ func (d *Docker) runPhase(parent context.Context, name, image, phase string, lim
 	if err := cmd.Start(); err != nil {
 		return result, &InfrastructureError{phase, "start", err}
 	}
+	observation := startObservation(parent, name, limits.WallTime)
+	defer observation.Close()
 	finished := make(chan error, 1)
 	go func() { finished <- cmd.Wait() }()
 	timer := time.NewTimer(limits.WallTime)
@@ -454,10 +456,16 @@ func (d *Docker) runPhase(parent context.Context, name, image, phase string, lim
 	if commandErr != nil && state.ExitCode == 0 && !timedOut && !tooMuch && !canceled {
 		return result, &InfrastructureError{phase, "attach", commandErr}
 	}
+	if !canceled {
+		if err := observation.Wait(); err != nil {
+			return result, &InfrastructureError{phase, "progress", err}
+		}
+	}
 	return result, nil
 }
 
 type state struct {
+	StartedAt string
 	Running   bool
 	Status    string
 	ExitCode  int

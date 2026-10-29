@@ -11,10 +11,12 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/bundles"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/config"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/objects"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/scheduling"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/storage"
 	"github.com/Amankumarsingh23/JudgeGrid/migrations"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -26,11 +28,13 @@ func main() {
 }
 func run() error {
 	allow := flag.Bool("allow-development-administration", false, "explicit local operator authorization")
-	action := flag.String("action", "", "init-storage, publish, rejudge, history, staged, object-audit, cache-evict")
+	action := flag.String("action", "", "local-user, scheduler-config, init-storage, publish, rejudge, history, staged, object-audit, cache-evict")
 	submission := flag.String("submission", "", "single owner-scoped submission UUID")
 	version := flag.Int64("version", 0, "immutable target version")
 	key := flag.String("key", "", "idempotency key or cache identity")
 	file := flag.String("file", "", "trusted publication JSON, maximum 3 MiB")
+	user := flag.String("user", "", "explicit local browser principal")
+	passwordFile := flag.String("password-file", "", "private local password file, 12..128 bytes")
 	flag.Parse()
 	cfg, e := config.Load()
 	if e != nil {
@@ -52,6 +56,37 @@ func run() error {
 	repo := storage.NewRepository(db)
 	var result any
 	switch *action {
+	case "local-user":
+		f, err := os.Open(*passwordFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		b, err := io.ReadAll(io.LimitReader(f, 131))
+		if err != nil {
+			return err
+		}
+		password := strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
+		e = repo.CreateLocalUser(ctx, *user, password)
+		result = map[string]string{"status": "local_user_ready", "principal": *user}
+	case "scheduler-config":
+		f, err := os.Open(*file)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		d := json.NewDecoder(io.LimitReader(f, 32769))
+		d.DisallowUnknownFields()
+		p := scheduling.Default()
+		if err = d.Decode(&p); err != nil {
+			return err
+		}
+		var extra any
+		if d.Decode(&extra) != io.EOF {
+			return fmt.Errorf("one bounded policy required")
+		}
+		e = repo.ConfigureScheduler(ctx, p)
+		result = map[string]string{"status": "scheduler_configured"}
 	case "object-audit":
 		if os.Getenv("BUNDLE_BACKEND") != "s3" {
 			return fmt.Errorf("explicit S3 backend required")

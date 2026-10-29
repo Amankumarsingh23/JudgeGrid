@@ -1,6 +1,8 @@
 # JudgeGrid
 
-Distributed online judge and future AI code-intelligence platform. Sessions 1–4 provide durable submissions, recoverable development dispatch and a restricted local C++17/Python execution subsystem. Full judging is not implemented yet.
+Distributed online judge and future AI code-intelligence platform. Sessions 1–10 provide durable submissions, automatic restricted C++17/Python judging, immutable tests and rejudges, verified compilation caching, fair shared admission, local cookie authentication and reconnectable live status.
+
+For the explicitly enabled local browser workspace, see [local web setup](docs/local-web.md). The default API rejects private access and automatic execution stays opt-in. [Session 10 completion](docs/session-10-completion.md) records the scope, tests and limitations.
 
 ## Run
 

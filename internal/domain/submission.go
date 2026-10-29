@@ -132,6 +132,7 @@ type Problem struct {
 }
 
 type Cursor struct {
+	OwnerHash string    `json:"owner"`
 	CreatedAt time.Time `json:"created_at"`
 	ID        string    `json:"id"`
 }
