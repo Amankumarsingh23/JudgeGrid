@@ -1,8 +1,10 @@
 # JudgeGrid
 
-Distributed online judge and future AI code-intelligence platform. Sessions 1–10 provide durable submissions, automatic restricted C++17/Python judging, immutable tests and rejudges, verified compilation caching, fair shared admission, local cookie authentication and reconnectable live status.
+Distributed online judge and future AI code-intelligence platform. Sessions 1–11 provide durable submissions, automatic restricted C++17/Python judging, immutable tests and rejudges, verified compilation caching, fair shared admission, local cookie authentication, reconnectable live status and optional private observability.
 
 For the explicitly enabled local browser workspace, see [local web setup](docs/local-web.md). The default API rejects private access and automatic execution stays opt-in. [Session 10 completion](docs/session-10-completion.md) records the scope, tests and limitations.
+
+Session 11 adds privacy-safe OpenTelemetry traces, Prometheus metrics, provisioned Grafana/Tempo diagnostics, bounded load profiles and controlled fault experiments. See [observability](docs/observability.md), [load testing](docs/load-testing.md), [chaos experiments](docs/chaos-experiments.md) and the [completion evidence](docs/session-11-completion.md). Telemetry is disabled by default and does not grant execution authority.
 
 ## Run
 

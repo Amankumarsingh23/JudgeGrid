@@ -1,0 +1,142 @@
+{
+  "uid": "judgegrid-judge",
+  "title": "JudgeGrid \u2014 Judge phases and cache efficiency",
+  "schemaVersion": 40,
+  "version": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Reading these development measurements",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Small samples are not capacity/SLO proof. Empty series means no observations. Histogram quantiles combine bucket rates across instances, never average instance quantiles. SSE HTTP time includes stream lifetime. Timestamp estimates include commit/skew; phase intervals may overlap. Trace lookup: Explore \u2192 Tempo \u2192 paste a trace_id from trusted operation logs; follow span links."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Phase p95 seconds",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95,sum by(le,phase)(rate(judgegrid_duration_seconds_bucket{phase=~\"bundle.fetch|cache.lookup|sandbox.workspace|cache.restore|sandbox.compile|sandbox.run|sandbox.cleanup|result.persist\"}[5m])))",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Cache hit ratio",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(judgegrid_operations_total{operation=\"cache.hit\"}[5m])) / clamp_min(sum(rate(judgegrid_operations_total{operation=~\"cache.hit|cache.miss\"}[5m])),0.001)",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Compiler/cache builds",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(operation,outcome)(increase(judgegrid_operations_total{operation=~\"cache.build|cache.hit|cache.miss|cache.publish\"}[5m]))",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Terminal verdict counts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(outcome,language)(increase(judgegrid_operations_total{operation=\"terminal\"}[5m]))",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Accepted-to-terminal p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95,sum by(le)(rate(judgegrid_duration_seconds_bucket{phase=\"accepted_terminal\"}[5m])))",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    "JudgeGrid",
+    "development"
+  ]
+}

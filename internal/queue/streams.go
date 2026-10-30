@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ const (
 
 // Job is a reference, never executable source. Attempt is not yet an ownership/fencing token.
 type Job struct {
+	TraceParent  string
 	JobID        string
 	Kind         string
 	SubmissionID string
@@ -45,7 +47,7 @@ func (j Job) Validate() error {
 	}
 	return nil
 }
-func (j Job) Values() map[string]any {
+func (j Job) baseValues() map[string]any {
 	if j.Kind == RejudgeJob {
 		return map[string]any{"schema_version": "3", "kind": j.Kind, "submission_id": strings.ToLower(j.SubmissionID), "attempt": "1", "event_id": strings.ToLower(j.EventID), "job_id": strings.ToLower(j.JobID)}
 	}
@@ -60,7 +62,40 @@ type Message struct {
 	Values map[string]any
 }
 
+func (j Job) Values() map[string]any {
+	m := j.baseValues()
+	if telemetry.ValidParent(j.TraceParent) {
+		m["traceparent"] = j.TraceParent
+		if j.Kind == RejudgeJob {
+			m["schema_version"] = "5"
+		} else if j.EventID != "" {
+			m["schema_version"] = "4"
+		} else {
+			delete(m, "traceparent")
+		}
+	}
+	return m
+}
 func (m Message) Job() (Job, error) {
+	if m.Values["schema_version"] == "4" || m.Values["schema_version"] == "5" {
+		v := map[string]any{}
+		for k, x := range m.Values {
+			if k != "traceparent" {
+				v[k] = x
+			}
+		}
+		v["schema_version"] = "2"
+		if m.Values["schema_version"] == "5" {
+			v["schema_version"] = "3"
+		}
+		j, e := (Message{Values: v}).Job()
+		parent, _ := m.Values["traceparent"].(string)
+		if telemetry.ValidParent(parent) {
+			j.TraceParent = parent
+		}
+		return j, e
+	}
+
 	if m.Values["schema_version"] == "3" {
 		if len(m.Values) != 6 {
 			return Job{}, ErrMalformed
@@ -108,10 +143,12 @@ func (s *Streams) EnsureGroup(ctx context.Context) error {
 	}
 	return err
 }
-func (s *Streams) Publish(ctx context.Context, j Job) (string, error) {
+func (s *Streams) Publish(ctx context.Context, j Job) (id string, err error) {
 	if err := j.Validate(); err != nil {
 		return "", err
 	}
+	ctx, end := telemetry.Begin(ctx, "redis.publish", "")
+	defer func() { end(err) }()
 	return s.client.XAdd(ctx, &redis.XAddArgs{Stream: s.Stream, Values: j.Values()}).Result()
 }
 func (s *Streams) Read(ctx context.Context, consumer string, count int64, block time.Duration) ([]Message, error) {

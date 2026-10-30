@@ -8,6 +8,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/storage"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/submission"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"log/slog"
 	"net/http"
 	"os"
@@ -35,6 +36,16 @@ func run() error {
 		return err
 	}
 	defer db.Close()
+	observed, observeErr := telemetry.Start("api")
+	if observeErr != nil {
+		return observeErr
+	}
+	if observed != nil {
+		defer observed.Close()
+	}
+	if observed != nil {
+		go telemetry.Poll(ctx, db)
+	}
 	redis := queue.Open(cfg.RedisAddr, cfg.RedisPassword)
 	defer redis.Close()
 	repo := storage.NewRepositoryWithBacklog(db, cfg.OutboxBacklogLimit)
@@ -64,7 +75,7 @@ func run() error {
 	} else {
 		handler = api.Routes(cfg.CheckTimeout, db.Ping, redis.Ping, service, auth)
 	}
-	server := &http.Server{Addr: cfg.HTTPAddr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: cfg.HTTPAddr, Handler: telemetry.HTTP(handler), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	result := make(chan error, 1)
 	go func() { slog.Info("api listening", "address", cfg.HTTPAddr); result <- server.ListenAndServe() }()
 	select {

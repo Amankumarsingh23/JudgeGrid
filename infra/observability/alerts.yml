@@ -1,0 +1,30 @@
+groups:
+  - name: judgegrid-development
+    rules:
+      - alert: OutboxOld
+        expr: judgegrid_outbox_oldest_pending_seconds > 30
+        for: 30s
+        annotations: {summary: "Old durable dispatch intent; inspect relay and Redis. See docs/observability.md#runbook"}
+      - alert: InfrastructureErrors
+        expr: sum(rate(judgegrid_operations_total{operation="agent.execute",outcome=~"error|timeout"}[2m])) > 0.1
+        for: 30s
+        annotations: {summary: "Infrastructure failures; check authority/backend health before retrying"}
+      - alert: ExpiredExecutionLeases
+        expr: judgegrid_state{kind="leases",state="EXPIRED"} > 0
+        for: 30s
+        annotations: {summary: "Expired authority; inspect recovery and run trusted reconciliation dry-run"}
+      - alert: StaleFenceWrites
+        expr: sum(increase(judgegrid_operations_total{operation="fence.reject"}[2m])) > 3
+        annotations: {summary: "Stale writers rejected; inspect agent restarts and heartbeat failure traces"}
+      - alert: AdmissionBacklog
+        expr: judgegrid_state{kind="scheduler",state="PENDING"} > 20
+        for: 30s
+        annotations: {summary: "Pending logical work; inspect cap saturation, do not bypass admission"}
+      - alert: TelemetryTargetDown
+        expr: up{job=~"judgegrid-.+"} == 0
+        for: 15s
+        annotations: {summary: "Optional target unavailable; distinguish stopped demo agents from application outage"}
+      - alert: TerminalLatency
+        expr: histogram_quantile(0.95,sum by(le)(rate(judgegrid_duration_seconds_bucket{phase="accepted_terminal"}[5m]))) > 60
+        for: 1m
+        annotations: {summary: "High observed terminal latency; verify population/sample count and inspect phase distributions"}

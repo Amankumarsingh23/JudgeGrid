@@ -19,7 +19,7 @@ type RejudgeRequest struct {
 	Replayed     bool   `json:"replayed"`
 }
 
-func (r *Repository) RequestRejudge(ctx context.Context, principal, key, id string, version int64) (result RejudgeRequest, err error) {
+func (r *Repository) requestRejudge(ctx context.Context, principal, key, id string, version int64) (result RejudgeRequest, err error) {
 	if principal == "" || len(principal) > 200 || len(key) < 1 || len(key) > 200 || version < 1 {
 		return result, domain.ErrInvalid
 	}
@@ -28,6 +28,9 @@ func (r *Repository) RequestRejudge(ctx context.Context, principal, key, id stri
 		return result, e
 	}
 	defer tx.Rollback(ctx)
+	if e := captureTrace(ctx, tx); e != nil {
+		return result, e
+	}
 	var eligible bool
 	if e = lockScheduler(ctx, tx); e != nil {
 		return result, e
@@ -229,7 +232,11 @@ func (r *Repository) failJob(ctx context.Context, w judge.Work, code string, ret
 	if _, e = tx.Exec(ctx, `UPDATE evaluation_job_ownership SET state=$2,failure_code=$3,next_attempt_at=clock_timestamp()+interval '1 second' WHERE job_id=$1`, w.JobID, state, code); e != nil {
 		return e
 	}
-	return tx.Commit(ctx)
+	e = tx.Commit(ctx)
+	if e == nil && state == "EXHAUSTED" {
+		recordFailedTerminal(w)
+	}
+	return e
 }
 func completeJob(ctx context.Context, db transactionBeginner, w judge.Work, report judge.Report) (judge.Summary, error) {
 	if e := judge.ValidateReport(w, report); e != nil {

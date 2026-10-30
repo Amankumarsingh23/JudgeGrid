@@ -3,3 +3,4 @@ bin/
 coverage.out
 .sandbox-images.local.json
 .judgegrid-test-bundles/
+__pycache__/

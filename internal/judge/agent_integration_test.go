@@ -123,11 +123,11 @@ func (f *autoFixture) submit(t *testing.T, lang, source string) queue.Job {
 	if e = (outbox.Relay{Store: f.repo, Publisher: f.s, Options: outbox.DefaultOptions()}).Step(f.ctx); e != nil {
 		t.Fatal(e)
 	}
-	var id string
-	if e = f.db.QueryRow(f.ctx, `SELECT id::text FROM outbox_events WHERE submission_id=$1`, sub.ID).Scan(&id); e != nil {
+	var id, parent string
+	if e = f.db.QueryRow(f.ctx, `SELECT id::text,COALESCE(traceparent,'') FROM outbox_events WHERE submission_id=$1`, sub.ID).Scan(&id, &parent); e != nil {
 		t.Fatal(e)
 	}
-	return queue.Job{Kind: queue.SubmissionJob, SubmissionID: sub.ID, EventID: id, Attempt: 1}
+	return queue.Job{Kind: queue.SubmissionJob, SubmissionID: sub.ID, EventID: id, Attempt: 1, TraceParent: parent}
 }
 func autoOptions() agent.Options {
 	o := agent.DefaultOptions()

@@ -7,6 +7,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/domain"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/progress"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/submission"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"io"
 	"net/http"
 	"strconv"
@@ -26,7 +27,17 @@ func parseCursor(value, id string) (int64, error) {
 	}
 	return n, nil
 }
-func sendSSE(w http.ResponseWriter, controller *http.ResponseController, id, kind string, data any) error {
+func sendSSE(w http.ResponseWriter, controller *http.ResponseController, id, kind string, data any) (err error) {
+	start := time.Now()
+	defer func() {
+		telemetry.Observe("sse.write", telemetry.Class(err), "", time.Since(start).Seconds())
+		if err != nil {
+			telemetry.Count("sse.disconnect", telemetry.Class(err), "")
+			if telemetry.Class(err) == "timeout" {
+				telemetry.Count("sse.slow", "timeout", "")
+			}
+		}
+	}()
 	if e := controller.SetWriteDeadline(time.Now().Add(5 * time.Second)); e != nil {
 		return e
 	}
@@ -47,6 +58,9 @@ func (h *submissionHandler) events(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	ctxObserve, finishObserve := telemetry.Begin(r.Context(), "sse.connect", "")
+	r = r.WithContext(ctxObserve)
+	defer finishObserve(nil)
 	id := r.PathValue("id")
 	if !submission.ValidID(id) {
 		apiError(w, domain.ErrNotFound)
@@ -71,6 +85,9 @@ func (h *submissionHandler) events(w http.ResponseWriter, r *http.Request) {
 	}
 	after := snapshot.Cursor
 	resume := raw != ""
+	if resume {
+		telemetry.Count("sse.reconnect", "ok", "")
+	}
 	reset := false
 	if resume {
 		after, e = parseCursor(raw, id)
@@ -118,6 +135,10 @@ func (h *submissionHandler) events(w http.ResponseWriter, r *http.Request) {
 		if e := sendSSE(w, controller, eventCursor(id, event.Sequence), event.Kind, event.Data); e != nil {
 			return e
 		}
+		telemetry.Since("sse.delivery", "", event.At)
+		if resume {
+			telemetry.Count("sse.replay", "replay", "")
+		}
 		after = event.Sequence
 		return nil
 	}
@@ -139,6 +160,7 @@ func (h *submissionHandler) events(w http.ResponseWriter, r *http.Request) {
 	kind := "snapshot"
 	if reset {
 		kind = "reset"
+		telemetry.Count("sse.reset", "reset", "")
 	}
 	if sendSSE(w, controller, eventCursor(id, snapshot.Cursor), kind, snapshot) != nil {
 		return
@@ -179,6 +201,7 @@ func (h *submissionHandler) events(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if head.Cursor-after > progress.ReplayWindow || after < head.First-1 {
+				telemetry.Count("sse.reset", "reset", "")
 				sendSSE(w, controller, eventCursor(id, head.Cursor), "reset", head)
 				return
 			}

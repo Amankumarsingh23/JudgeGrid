@@ -9,6 +9,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/config"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/reconcile"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/storage"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/Amankumarsingh23/JudgeGrid/migrations"
 	"log/slog"
 	"os"
@@ -40,6 +41,13 @@ func run() error {
 		return fmt.Errorf("database authority unavailable")
 	}
 	defer db.Close()
+	observed, observeErr := telemetry.Start("reconciler")
+	if observeErr != nil {
+		return observeErr
+	}
+	if observed != nil {
+		defer observed.Close()
+	}
 	if e = migrations.Check(ctx, db); e != nil {
 		return fmt.Errorf("database authority schema unavailable")
 	}

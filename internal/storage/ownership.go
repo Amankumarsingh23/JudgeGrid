@@ -36,7 +36,7 @@ func authorizeWork(ctx context.Context, tx pgx.Tx, w judge.Work) error {
 	}
 	return setFence(ctx, tx, w)
 }
-func (r *Repository) RenewExecution(ctx context.Context, w judge.Work, ttl time.Duration) error {
+func (r *Repository) renewExecution(ctx context.Context, w judge.Work, ttl time.Duration) error {
 	if w.JobID != "" {
 		return r.renewJob(ctx, w, ttl)
 	}
@@ -60,7 +60,7 @@ func (r *Repository) RenewExecution(ctx context.Context, w judge.Work, ttl time.
 	}
 	return tx.Commit(ctx)
 }
-func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string, j queue.Job, ttl time.Duration, max int) (w judge.Work, err error) {
+func (r *Repository) claimExecution(ctx context.Context, principal, owner string, j queue.Job, ttl time.Duration, max int) (w judge.Work, err error) {
 	if j.Kind == queue.RejudgeJob {
 		return r.claimJob(ctx, principal, owner, j, ttl, max)
 	}
@@ -140,6 +140,7 @@ func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string
 				return w, err
 			}
 			summary := judge.Summary{SubmissionID: j.SubmissionID, Status: "FAILED"}
+			w.NewTerminal = true
 			w.Existing = &summary
 			return w, tx.Commit(ctx)
 		}
@@ -154,6 +155,7 @@ func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string
 			return w, err
 		}
 		reason := "unsupported_language"
+		w.NewTerminal = true
 		w.Existing = &judge.Summary{SubmissionID: j.SubmissionID, Status: "FAILED", FailureCode: &reason}
 		return w, tx.Commit(ctx)
 	}
@@ -169,6 +171,7 @@ func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string
 			return w, err
 		}
 		reason := "bundle_unavailable"
+		w.NewTerminal = true
 		w.Existing = &judge.Summary{SubmissionID: j.SubmissionID, Status: "FAILED", FailureCode: &reason}
 		return w, tx.Commit(ctx)
 	}
@@ -199,7 +202,7 @@ func (r *Repository) ClaimExecution(ctx context.Context, principal, owner string
 	return w, tx.Commit(ctx)
 }
 
-func (r *Repository) FailExecution(ctx context.Context, w judge.Work, code string, retry bool) error {
+func (r *Repository) failExecution(ctx context.Context, w judge.Work, code string, retry bool) error {
 	if w.JobID != "" {
 		return r.failJob(ctx, w, code, retry)
 	}
@@ -234,7 +237,11 @@ func (r *Repository) FailExecution(ctx context.Context, w judge.Work, code strin
 	if _, err = tx.Exec(ctx, `UPDATE execution_ownership SET state=$2,failure_code=$3,next_attempt_at=clock_timestamp()+interval '1 second' WHERE submission_id=$1`, w.Submission.ID, state, code); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	err = tx.Commit(ctx)
+	if err == nil && terminal {
+		recordFailedTerminal(w)
+	}
+	return err
 }
 func (r *Repository) RecoveryJobs(ctx context.Context, principal string, limit int) ([]queue.Job, error) {
 	if limit < 1 || limit > 16 {

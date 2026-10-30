@@ -1,0 +1,56 @@
+# Opt-in local diagnostics. Never merge this overlay into a public deployment.
+services:
+  api:
+    environment:
+      APP_ENV: development
+      TELEMETRY_ENABLED: 'true'
+      TELEMETRY_PRIVATE_NETWORK: 'true'
+      TELEMETRY_ADDR: :9091
+      TELEMETRY_OTLP_URL: http://tempo:4318
+      DATABASE_URL: ${OBS_DATABASE_URL:-postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable}
+    ports:
+      - "127.0.0.1:19091:9091"
+  outbox-relay:
+    environment:
+      APP_ENV: development
+      TELEMETRY_ENABLED: 'true'
+      TELEMETRY_PRIVATE_NETWORK: 'true'
+      TELEMETRY_ADDR: :9092
+      TELEMETRY_OTLP_URL: http://tempo:4318
+      DATABASE_URL: ${OBS_DATABASE_URL:-postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable}
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    profiles: [observability]
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=24h, --storage.tsdb.retention.size=256MB]
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["127.0.0.1:19090:9090"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    mem_limit: 256m
+    cpus: 0.5
+  tempo:
+    image: grafana/tempo:3.1.1
+    profiles: [observability]
+    command: [-config.file=/etc/tempo.yaml]
+    volumes: ["./infra/observability/tempo.yml:/etc/tempo.yaml:ro"]
+    tmpfs: ["/var/tempo:size=268435456,uid=10001,gid=10001"]
+    ports: ["127.0.0.1:13200:3200", "127.0.0.1:14318:4318"]
+    mem_limit: 512m
+    cpus: 0.5
+  grafana:
+    image: grafana/grafana:13.3.0
+    profiles: [observability]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:13000:3000"]
+    mem_limit: 256m
+    cpus: 0.5

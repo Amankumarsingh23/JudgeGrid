@@ -83,6 +83,9 @@ type Summary struct {
 	Replayed         bool            `json:"replayed"`
 }
 type Work struct {
+	NewTerminal                bool
+	TraceParent                string
+	AcceptedAt                 time.Time
 	JobID                      string
 	Owner                      string
 	Generation                 int

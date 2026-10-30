@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/objects"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"sync/atomic"
 	"time"
@@ -41,7 +42,7 @@ type Counts struct{ Hits, Misses, Builds int64 }
 func (c *Cache) Counts() Counts { return Counts{c.hits.Load(), c.misses.Load(), c.builds.Load()} }
 
 // RecordBuild is called only when the trusted executor actually invokes the compiler.
-func (c *Cache) RecordBuild() { c.builds.Add(1) }
+func (c *Cache) RecordBuild() { c.builds.Add(1); telemetry.Count("cache.build", "build", "cpp17") }
 func Validate(b []byte) error {
 	if len(b) < 64 || len(b) > objects.MaxBytes {
 		return objects.ErrIntegrity
@@ -59,7 +60,9 @@ func Validate(b []byte) error {
 
 // Acquire bounds wait time by caller context, and gives BUILDING claims a fixed two-minute lease.
 // READY rows are immutable. Eviction removes metadata eligibility, never a potentially referenced object.
-func (c *Cache) Acquire(ctx context.Context, k Key, owner string) (Claim, error) {
+func (c *Cache) Acquire(ctx context.Context, k Key, owner string) (result Claim, err error) {
+	ctx, end := telemetry.Begin(ctx, "cache.lookup", "cpp17")
+	defer func() { end(err) }()
 	id := k.ID()
 	data, _ := json.Marshal(k)
 	cl := Claim{Key: id, Owner: owner}
@@ -80,6 +83,7 @@ func (c *Cache) Acquire(ctx context.Context, k Key, owner string) (Claim, error)
 		e := c.DB.QueryRow(ctx, `INSERT INTO compilation_cache(cache_key,key_json,state,generation,owner,lease_expires_at) VALUES($1,$2,'BUILDING',1,$3,clock_timestamp()+$4::bigint*interval '1 millisecond') ON CONFLICT(cache_key) DO UPDATE SET state='BUILDING',generation=compilation_cache.generation+1,owner=EXCLUDED.owner,lease_expires_at=EXCLUDED.lease_expires_at,artifact_sha=NULL,artifact_bytes=NULL,ready_at=NULL WHERE compilation_cache.key_json=EXCLUDED.key_json AND(compilation_cache.state='EVICTED' OR(compilation_cache.state='BUILDING' AND compilation_cache.lease_expires_at<=clock_timestamp())) RETURNING generation`, id, data, owner, lease.Milliseconds()).Scan(&cl.Generation)
 		if e == nil {
 			c.misses.Add(1)
+			telemetry.Count("cache.miss", "miss", "cpp17")
 			return cl, nil
 		}
 		e = c.DB.QueryRow(ctx, `SELECT state,generation,COALESCE(artifact_sha,''),COALESCE(artifact_bytes,0) FROM compilation_cache WHERE cache_key=$1 AND key_json=$2::jsonb`, id, data).Scan(&state, &generation, &digest, &size)
@@ -98,6 +102,7 @@ func (c *Cache) Acquire(ctx context.Context, k Key, owner string) (Claim, error)
 			cl.Generation = generation
 			cl.Hit = true
 			c.hits.Add(1)
+			telemetry.Count("cache.hit", "hit", "cpp17")
 			return cl, nil
 		}
 		select {
@@ -107,7 +112,9 @@ func (c *Cache) Acquire(ctx context.Context, k Key, owner string) (Claim, error)
 		}
 	}
 }
-func (c *Cache) Publish(ctx context.Context, cl Claim, b []byte) error {
+func (c *Cache) Publish(ctx context.Context, cl Claim, b []byte) (err error) {
+	ctx, end := telemetry.Begin(ctx, "cache.publish", "cpp17")
+	defer func() { end(err) }()
 	if cl.Hit || Validate(b) != nil {
 		return objects.ErrIntegrity
 	}

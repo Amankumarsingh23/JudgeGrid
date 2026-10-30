@@ -147,7 +147,7 @@ func (s *evaluationSession) Complete(ctx context.Context, work judge.Work, repor
 
 // CommitEvaluation exposes the same guarded finalizer for trusted persistence/retry tests.
 // The local service uses its pinned session connection instead; this is never an HTTP route.
-func (r *Repository) CommitEvaluation(ctx context.Context, work judge.Work, report judge.Report) (judge.Summary, error) {
+func (r *Repository) commitEvaluation(ctx context.Context, work judge.Work, report judge.Report) (judge.Summary, error) {
 	return completeEvaluation(ctx, r.pool, work, report)
 }
 func completeEvaluation(ctx context.Context, db transactionBeginner, work judge.Work, report judge.Report) (judge.Summary, error) {

@@ -21,6 +21,11 @@ jobs:
       - name: Frontend JavaScript syntax
         run: node --check internal/api/ui/app.js
       - run: python3 scripts/check-service-isolation.py
+      - name: Validate optional observability configuration
+        run: |
+          python3 scripts/generate-dashboards.py
+          git diff --exit-code -- infra/observability/grafana/dashboards
+          docker compose -f docker-compose.yml -f infra/observability.compose.yml --profile observability config --quiet
       - run: docker compose up --build -d --wait
       - run: docker compose run --rm migrate manage check
       - run: docker compose run --rm migrate manage seed
@@ -40,8 +45,15 @@ jobs:
         run: |
           docker compose --profile outbox up -d --wait outbox-relay
           python3 scripts/outbox_smoke.py --stream test:judgegrid:ci-outbox
+      - name: Actual private metric scraping, trace storage and dashboard provisioning
+        env:
+          OUTBOX_RELAY_ENABLED: 'true'
+          OUTBOX_STREAM: test:judgegrid:ci-observed
+        run: |
+          docker compose -f docker-compose.yml -f infra/observability.compose.yml --profile observability --profile outbox up --no-deps -d --wait api outbox-relay prometheus tempo grafana
+          python3 scripts/observability-smoke.py
       - if: always()
-        run: docker compose --profile outbox logs && docker compose --profile outbox down
+        run: docker compose -f docker-compose.yml -f infra/observability.compose.yml --profile outbox --profile observability logs && docker compose -f docker-compose.yml -f infra/observability.compose.yml --profile outbox --profile observability down
   sandbox:
     runs-on: ubuntu-latest
     env:
@@ -90,6 +102,6 @@ jobs:
           export TEST_S3_SECRET_KEY=$MINIO_ROOT_PASSWORD
           trap 'docker compose -f docker-compose.yml -f infra/local-judge.compose.yml -f infra/object-store.compose.yml down' EXIT
           docker compose -f docker-compose.yml -f infra/local-judge.compose.yml -f infra/object-store.compose.yml up --build --no-deps -d --wait minio
-          go test -race -tags=agentintegration,session9integration -run TestS9 -v ./internal/judge
+          APP_ENV=development TELEMETRY_ENABLED=true TELEMETRY_ADDR=127.0.0.1:0 TELEMETRY_OTLP_URL=http://127.0.0.1:1 S11_TEST_TELEMETRY=1 go test -race -tags=agentintegration,session9integration,session11integration -run 'TestS9|TestS11' -v ./internal/judge
       - if: always()
         run: docker compose -f docker-compose.yml -f infra/local-judge.compose.yml down

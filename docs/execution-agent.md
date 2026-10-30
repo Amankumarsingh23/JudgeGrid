@@ -75,6 +75,8 @@ The global limit counts current valid database leases across initial/rejudge own
 
 Safe structured admission/completion logs include principal, submission/run/job identity, generation and verdict. Actual compiling/running events require observed Docker start plus the same active execution fence. A cache restore reports preparation instead of a compiler start. Session 11 can build telemetry from these identities without adding source or hidden-test material to logs.
 
+Session 11's optional [observability overlay](observability.md) gives host agents private Prometheus listeners and bounded asynchronous OTLP export. Enable TELEMETRY_ENABLED only in the trusted development configuration, use a distinct loopback TELEMETRY_ADDR per process and keep existing execution/fair-mode flags. Exporter or scrape failure never authorizes a retry of a committed result. `S11_TEST_TELEMETRY=1` is a test bootstrap for instrumented process-crash helpers, not a production consumer switch.
+
 ## Session 9 storage, cache and rejudge jobs
 
 The host agent accepts validated schema-three rejudge references as well as initial schema-two events. Logical evaluation job identity is distinct from attempt generation. Heartbeats, retry budgets, result fencing, DB recovery and sandbox provenance resolve the correct job. Initial submissions remain sealed. Rejudge request/selection ordering is described in [rejudging](rejudging.md).

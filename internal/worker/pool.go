@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -190,12 +191,20 @@ func (p *Pool) process(ctx context.Context, consumer string, message queue.Messa
 		slog.Error("malformed message retained pending; operator repair required", "message_id", message.ID, "consumer", consumer)
 		return
 	}
+	ctx, end := telemetry.Link(ctx, "redis.process", "", job.TraceParent)
+	defer func() { end(err) }()
 	handlerCtx, cancel := context.WithTimeout(ctx, p.options.HandlerTimeout)
 	outcome, err := p.handler.Handle(handlerCtx, job, consumer)
 	cancel()
 	if err != nil || (outcome != Handled && outcome != AlreadyHandled) {
+		if err == nil {
+			err = fmt.Errorf("delivery deferred")
+		}
 		slog.Warn("dispatch not acknowledged; retained pending", "message_id", message.ID, "consumer", consumer, "outcome", outcome, "error", err)
 		return
+	}
+	if outcome == AlreadyHandled {
+		telemetry.Count("redis.duplicate", "ok", "")
 	}
 	// ACK gets a separate command budget, including during successful drain.
 	command, cancel := context.WithTimeout(ctx, p.options.CommandTimeout)

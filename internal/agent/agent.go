@@ -9,6 +9,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/judge"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/scheduling"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/worker"
 	"log/slog"
 	"sync/atomic"
@@ -86,7 +87,7 @@ func (h *Handler) Handle(ctx context.Context, j queue.Job, _ string) (worker.Out
 	}
 	return h.execute(ctx, j, h.Principal)
 }
-func (h *Handler) execute(ctx context.Context, j queue.Job, principal string) (worker.Outcome, error) {
+func (h *Handler) execute(ctx context.Context, j queue.Job, principal string) (out worker.Outcome, finalErr error) {
 	select {
 	case h.slots <- struct{}{}:
 	case <-ctx.Done():
@@ -102,6 +103,9 @@ func (h *Handler) execute(ctx context.Context, j queue.Job, principal string) (w
 	if w.Existing != nil {
 		return worker.AlreadyHandled, nil
 	}
+	ctx, finishObservation := telemetry.Link(ctx, "agent.execute", w.Submission.Language, w.TraceParent)
+	defer func() { finishObservation(finalErr) }()
+
 	if h.Fair {
 		slog.Info("scheduled execution admitted", "principal", principal, "submission_id", w.Submission.ID, "job_id", w.JobID, "run_id", w.RunID, "generation", w.Generation)
 	}
@@ -110,7 +114,7 @@ func (h *Handler) execute(ctx context.Context, j queue.Job, principal string) (w
 		evaluation = execution.WithRegistry(evaluation, registry)
 	}
 	defer cancel()
-	heartbeat, stopHeartbeat := context.WithCancel(context.Background())
+	heartbeat, stopHeartbeat := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopHeartbeat()
 	done := make(chan struct{})
 	var uncertain atomic.Bool
@@ -136,7 +140,10 @@ func (h *Handler) execute(ctx context.Context, j queue.Job, principal string) (w
 		}
 	}()
 	defer func() { stopHeartbeat(); <-done }()
+	bundleCtx, bundleEnd := telemetry.Begin(evaluation, "bundle.fetch", w.Submission.Language)
+	_ = bundleCtx
 	suite, err := h.Bundles.Load(w.Reference.Hash)
+	bundleEnd(err)
 	var report judge.Report
 	if err == nil {
 		report, err = judge.Evaluate(evaluation, h.Engine, w, suite)
@@ -144,7 +151,7 @@ func (h *Handler) execute(ctx context.Context, j queue.Job, principal string) (w
 	if uncertain.Load() {
 		return worker.Retry, errors.New("execution ownership uncertain")
 	}
-	persist, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	persist, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer stop()
 	if err != nil || evaluation.Err() != nil {
 		code := "sandbox_infrastructure"

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/execution"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"sort"
 )
 
@@ -30,7 +31,18 @@ type Entry struct {
 	Resources   int    `json:"resources"`
 }
 
-func Run(ctx context.Context, db Authority, runtime Runtime, apply bool, max int) ([]Entry, error) {
+func Run(ctx context.Context, db Authority, runtime Runtime, apply bool, max int) (result []Entry, err error) {
+	ctx, end := telemetry.Begin(ctx, "reconcile.scan", "")
+	defer func() {
+		end(err)
+		for _, row := range result {
+			op := "reconcile.preserve"
+			if row.Decision == "reaped" {
+				op = "reconcile.reap"
+			}
+			telemetry.Count(op, "ok", "")
+		}
+	}()
 	resources, e := runtime.List(ctx, max)
 	if e != nil {
 		return nil, e

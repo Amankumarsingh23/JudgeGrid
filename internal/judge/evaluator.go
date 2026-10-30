@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"time"
 
 	"github.com/Amankumarsingh23/JudgeGrid/internal/bundles"
@@ -82,10 +83,15 @@ func RuntimeVerdict(p *execution.PhaseResult) (domain.Verdict, error) {
 	}
 }
 func Evaluate(ctx context.Context, engine execution.Preparer, work Work, suite bundles.Bundle) (report Report, err error) {
+	ctx, end := telemetry.Begin(ctx, "judge.evaluate", work.Submission.Language)
+	defer func() { end(err) }()
 	if work.RunID != "" {
 		ctx = execution.WithIdentity(ctx, work.RunID, work.Submission.ID, work.Owner, work.Generation)
 	}
-	if err = suite.Verify(work.Reference); err != nil {
+	_, verifyEnd := telemetry.Begin(ctx, "bundle.verify", work.Submission.Language)
+	err = suite.Verify(work.Reference)
+	verifyEnd(err)
+	if err != nil {
 		return report, err
 	}
 	limits := execution.Limits{WallTime: time.Duration(work.TimeLimitMS) * time.Millisecond, MemoryBytes: int64(work.MemoryLimitKB) * 1024, OutputBytes: 64 << 10}

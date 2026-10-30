@@ -1,0 +1,186 @@
+{
+  "uid": "judgegrid-dispatch",
+  "title": "JudgeGrid \u2014 Outbox/Redis and fair scheduler",
+  "schemaVersion": 40,
+  "version": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Reading these development measurements",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Small samples are not capacity/SLO proof. Empty series means no observations. Histogram quantiles combine bucket rates across instances, never average instance quantiles. SSE HTTP time includes stream lifetime. Timestamp estimates include commit/skew; phase intervals may overlap. Trace lookup: Explore \u2192 Tempo \u2192 paste a trace_id from trusted operation logs; follow span links."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Cached outbox states",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "judgegrid_state{kind=\"outbox\"}",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Oldest pending intent seconds",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "judgegrid_outbox_oldest_pending_seconds",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Pending logical jobs",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "judgegrid_state{kind=\"scheduler\"}",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Admission cap/rate rejection",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(operation,outcome)(rate(judgegrid_operations_total{outcome=~\"capacity|throttle\"}[2m]))",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Admission wait p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95,sum by(le,phase)(rate(judgegrid_duration_seconds_bucket{phase=~\"eligible_admission|accepted_admission|outbox_delay\"}[2m])))",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Redis deliveries/duplicates",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 19,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(operation,outcome)(rate(judgegrid_operations_total{operation=~\"redis.process|redis.duplicate|outbox.publish\"}[2m]))",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Snapshot health and truncation",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "judgegrid-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "judgegrid_state{kind=~\"snapshot_ok|snapshot_capped\"}",
+          "legendFormat": "{{phase}} {{operation}} {{outcome}} {{state}} {{route}}"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    "JudgeGrid",
+    "development"
+  ]
+}

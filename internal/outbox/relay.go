@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"log/slog"
 	"math/rand/v2"
 	"strings"
@@ -15,6 +16,8 @@ import (
 var ErrClaimLost = errors.New("outbox claim expired or replaced")
 
 type Event struct {
+	CreatedAt                    time.Time
+	TraceParent                  string
 	JobID                        string
 	ID, SubmissionID, Token      string
 	Generation, IntentGeneration int64
@@ -23,10 +26,10 @@ type Event struct {
 
 func (e Event) Job() (queue.Job, error) {
 	if e.Version == 3 {
-		j := queue.Job{Kind: queue.RejudgeJob, SubmissionID: e.SubmissionID, EventID: e.ID, JobID: e.JobID, Attempt: e.IntentGeneration}
+		j := queue.Job{TraceParent: e.TraceParent, Kind: queue.RejudgeJob, SubmissionID: e.SubmissionID, EventID: e.ID, JobID: e.JobID, Attempt: e.IntentGeneration}
 		return j, j.Validate()
 	}
-	j := queue.Job{Kind: queue.SubmissionJob, SubmissionID: e.SubmissionID, Attempt: e.IntentGeneration, EventID: e.ID}
+	j := queue.Job{TraceParent: e.TraceParent, Kind: queue.SubmissionJob, SubmissionID: e.SubmissionID, Attempt: e.IntentGeneration, EventID: e.ID}
 	if e.Version != 2 {
 		return j, queue.ErrMalformed
 	}
@@ -99,7 +102,9 @@ func (r Relay) Step(ctx context.Context) error {
 		return err
 	}
 	claimCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	claimCtx, claimEnd := telemetry.Begin(claimCtx, "outbox.claim", "")
 	events, err := r.Store.Claim(claimCtx, r.Options.Batch, r.Options.ClaimTTL)
+	claimEnd(err)
 	cancel()
 	if err != nil {
 		return err
@@ -118,7 +123,16 @@ func (r Relay) Step(ctx context.Context) error {
 	}
 	return joined
 }
-func (r Relay) deliver(ctx context.Context, e Event) error {
+func (r Relay) deliver(ctx context.Context, e Event) (result error) {
+	ctx, end := telemetry.Link(ctx, "outbox.publish", "", e.TraceParent)
+	var observedError error
+	defer func() {
+		if observedError != nil {
+			end(observedError)
+		} else {
+			end(result)
+		}
+	}()
 	j, err := e.Job()
 	var streamID string
 	if err == nil {
@@ -126,16 +140,22 @@ func (r Relay) deliver(ctx context.Context, e Event) error {
 		streamID, err = r.Publisher.Publish(publish, j)
 		cancel()
 	}
+	observedError = err
 	record, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	if err == nil {
 		err = r.Store.Published(record, e, streamID)
+		if err == nil {
+			telemetry.Since("outbox_delay", "", e.CreatedAt)
+		}
 		if err != nil {
 			slog.Warn("publication record uncertain; claim will expire", "event_id", e.ID, "code", "publication_record_uncertain")
 		}
 		return err
 	}
+
 	code, permanent := Classify(err)
+	telemetry.Count("outbox.retry", map[bool]string{true: "permanent", false: "transient"}[permanent], "")
 	if !permanent && e.Attempts >= r.Options.MaxAttempts {
 		code = "retry_exhausted"
 		permanent = true

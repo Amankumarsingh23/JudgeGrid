@@ -11,6 +11,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/execution"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/storage"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/worker"
 	"github.com/Amankumarsingh23/JudgeGrid/migrations"
 	"log/slog"
@@ -76,6 +77,13 @@ func run() error {
 		return fmt.Errorf("agent database unavailable")
 	}
 	defer db.Close()
+	observed, observeErr := telemetry.Start("judge-agent")
+	if observeErr != nil {
+		return observeErr
+	}
+	if observed != nil {
+		defer observed.Close()
+	}
 	if err = migrations.Check(setup, db); err != nil {
 		return fmt.Errorf("agent migrations unavailable")
 	}

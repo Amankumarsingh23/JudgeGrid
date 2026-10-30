@@ -45,12 +45,15 @@ func newID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-func (r *Repository) Create(ctx context.Context, principal, key string, req domain.CreateRequest) (domain.Submission, bool, error) {
+func (r *Repository) create(ctx context.Context, principal, key string, req domain.CreateRequest) (domain.Submission, bool, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return domain.Submission{}, false, err
 	}
 	defer tx.Rollback(ctx)
+	if e := captureTrace(ctx, tx); e != nil {
+		return domain.Submission{}, false, e
+	}
 	if err = lockScheduler(ctx, tx); err != nil {
 		return domain.Submission{}, false, err
 	}

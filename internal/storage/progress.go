@@ -6,7 +6,9 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/domain"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/execution"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/progress"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/jackc/pgx/v5"
+	"time"
 )
 
 func (r *Repository) ProgressSnapshot(ctx context.Context, principal, id string) (s progress.Snapshot, e error) {
@@ -61,9 +63,10 @@ func (r *Repository) ObserveSandboxPhase(ctx context.Context, p execution.Proven
 	if e = tx.QueryRow(ctx, `SELECT id::text FROM submissions WHERE id=$1 FOR UPDATE`, p.SubmissionID).Scan(&sid); e != nil {
 		return e
 	}
+	var claimed time.Time
 	var owner string
 	var job *string
-	if e = tx.QueryRow(ctx, `SELECT a.owner_id,r.job_id::text FROM sandbox_authority a JOIN evaluation_runs r ON r.id=a.run_id WHERE a.run_id=$1 AND a.submission_id=$2 AND a.generation=$3 AND a.state='ACTIVE' AND a.lease_expires_at>clock_timestamp()`, p.RunID, p.SubmissionID, p.Generation).Scan(&owner, &job); e != nil {
+	if e = tx.QueryRow(ctx, `SELECT a.owner_id,r.job_id::text,r.started_at FROM sandbox_authority a JOIN evaluation_runs r ON r.id=a.run_id WHERE a.run_id=$1 AND a.submission_id=$2 AND a.generation=$3 AND a.state='ACTIVE' AND a.lease_expires_at>clock_timestamp()`, p.RunID, p.SubmissionID, p.Generation).Scan(&owner, &job, &claimed); e != nil {
 		return e
 	}
 	if execution.OwnerHash(owner) != p.OwnerHash {
@@ -78,5 +81,9 @@ func (r *Repository) ObserveSandboxPhase(ctx context.Context, p execution.Proven
 	if _, e = tx.Exec(ctx, `SELECT append_public_event($1,$2,jsonb_build_object('status','RUNNING','evaluation_job_id',$3::text,'evaluation_run_id',$4::text,'generation',$5::int))`, p.SubmissionID, kind, job, p.RunID, p.Generation); e != nil {
 		return e
 	}
-	return tx.Commit(ctx)
+	e = tx.Commit(ctx)
+	if e == nil && (kind == "preparing" || kind == "compiling") {
+		telemetry.Since("claimed_start", "", claimed)
+	}
+	return e
 }

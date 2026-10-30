@@ -12,6 +12,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/storage"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/submission"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/Amankumarsingh23/JudgeGrid/migrations"
 	"log/slog"
 	"net/http"
@@ -55,6 +56,13 @@ func run() error {
 		return fmt.Errorf("outbox database unavailable")
 	}
 	defer db.Close()
+	observed, observeErr := telemetry.Start("outbox-relay")
+	if observeErr != nil {
+		return observeErr
+	}
+	if observed != nil {
+		defer observed.Close()
+	}
 	if err = migrations.Check(startup, db); err != nil {
 		return fmt.Errorf("outbox migrations missing or inconsistent")
 	}

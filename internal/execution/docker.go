@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/buildcache"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -150,6 +151,8 @@ func (d *Docker) Execute(ctx context.Context, req Request) (result Result, err e
 
 // Prepare compiles/writes source once. The returned artifact is local to this evaluation, not a global cache.
 func (d *Docker) Prepare(ctx context.Context, req Request) (artifact Prepared, result Result, err error) {
+	ctx, end := telemetry.Begin(ctx, "sandbox.workspace", req.Language)
+	defer func() { end(err) }()
 	if err = req.Validate(); err != nil {
 		return nil, result, err
 	}

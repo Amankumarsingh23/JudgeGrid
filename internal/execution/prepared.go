@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/buildcache"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +34,27 @@ func (p *preparedDocker) protect(ctx context.Context, action func() error) error
 	return action()
 }
 
-func (p *preparedDocker) phase(ctx context.Context, name string, limits Limits, input []byte, readonly bool, command []string) (*PhaseResult, error) {
+func (p *preparedDocker) phase(ctx context.Context, name string, limits Limits, input []byte, readonly bool, command []string) (result *PhaseResult, err error) {
+	phase := name
+	if name == "compile" && p.claim != nil && p.claim.Hit {
+		phase = "cache.restore"
+	}
+	if name == "prepare" {
+		phase = "stage"
+	}
+	if strings.HasPrefix(name, "run") {
+		phase = "run"
+	}
+	ctx, end := telemetry.Begin(ctx, map[bool]string{true: "cache.restore", false: "sandbox." + phase}[phase == "cache.restore"], p.request.Language)
+	defer func() {
+		end(err)
+		if result != nil {
+			telemetry.Observe("sandbox.attached", telemetry.Class(err), p.request.Language, result.WallTime.Seconds())
+		}
+		if result != nil && result.Outcome == WallTimeout {
+			telemetry.Count("sandbox.timeout", "timeout", p.request.Language)
+		}
+	}()
 	container := p.result.ExecutionID + "-" + name
 	p.containers = append(p.containers, container)
 	if err := p.protect(ctx, func() error {
@@ -109,6 +130,11 @@ func (p *preparedDocker) Close() error {
 		return p.closeErr
 	}
 	p.closed = true
+	cleanupStart := time.Now()
+	defer func() {
+		telemetry.Count("sandbox.cleanup", telemetry.Class(p.closeErr), p.request.Language)
+		telemetry.Observe("sandbox.cleanup", telemetry.Class(p.closeErr), p.request.Language, time.Since(cleanupStart).Seconds())
+	}()
 	defer p.releaseBuild()
 	defer func() { p.docker.active.Add(-1); <-p.docker.slots }()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgconn"
 	"io"
 	"log/slog"
@@ -76,7 +77,9 @@ type submissionHandler struct {
 }
 
 func (h *submissionHandler) principal(w http.ResponseWriter, r *http.Request) (string, bool) {
-	p, err := h.auth(r)
+	ctx, end := telemetry.Begin(r.Context(), "authorize", "")
+	p, err := h.auth(r.WithContext(ctx))
+	end(err)
 	if err != nil {
 		apiError(w, err)
 		return "", false

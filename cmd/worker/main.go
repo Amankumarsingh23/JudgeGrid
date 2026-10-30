@@ -8,6 +8,7 @@ import (
 	"github.com/Amankumarsingh23/JudgeGrid/internal/config"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/queue"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/storage"
+	"github.com/Amankumarsingh23/JudgeGrid/internal/telemetry"
 	"github.com/Amankumarsingh23/JudgeGrid/internal/worker"
 	"log/slog"
 	"net/http"
@@ -39,6 +40,13 @@ func run() error {
 		return err
 	}
 	defer db.Close()
+	observed, observeErr := telemetry.Start("worker")
+	if observeErr != nil {
+		return observeErr
+	}
+	if observed != nil {
+		defer observed.Close()
+	}
 	redis := queue.Open(cfg.RedisAddr, cfg.RedisPassword)
 	defer redis.Close()
 	streams := redis.Streams(wcfg.Stream, wcfg.Group)

@@ -77,7 +77,7 @@ func (r *Repository) ConfigureScheduler(ctx context.Context, p scheduling.Policy
 	}
 	return tx.Commit(ctx)
 }
-func (r *Repository) NextScheduled(ctx context.Context, allowed []string) (*scheduling.Candidate, error) {
+func (r *Repository) nextScheduled(ctx context.Context, allowed []string) (*scheduling.Candidate, error) {
 	if len(allowed) < 1 || len(allowed) > 128 {
 		return nil, domain.ErrInvalid
 	}

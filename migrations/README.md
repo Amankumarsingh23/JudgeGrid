@@ -13,4 +13,6 @@ Seed is an explicit development-only CLI operation. It creates two problems and 
 
 Migrations are forward-only. Back up persistent data before future schema changes. Tests use isolated schemas and never drop the application's public schema.
 
+Session 11 migration 0013 adds immutable, validated producer trace context to existing outbox intents. It is optional correlation metadata, not dispatch/execution authority. Existing payload identities, owner fences and event ordering remain unchanged; old migrations keep their exact checksummed bytes.
+
 Session 3 adds development_dispatch_receipts in migration 0002. Its unique (submission_id, attempt) key guards only isolated harness effects; it is not a judge verdict, execution lease or attempt-fencing record. The original migration is unchanged.
