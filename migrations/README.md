@@ -13,6 +13,8 @@ Seed is an explicit development-only CLI operation. It creates two problems and 
 
 Migrations are forward-only. Back up persistent data before future schema changes. Tests use isolated schemas and never drop the application's public schema.
 
+Session 14 migration 0016 adds private retrieval policies, generation-fenced build indexes, per-index partitioned BM25 document/vector records and repository-scoped verified embedding cache. It requires pgvector 0.8.2 on the pinned PostgreSQL 17-compatible image. The extension resides in public; application data stays schema-scoped. Migrations 0001–0015 remain byte-for-byte unchanged. See [retrieval operations](../docs/repository-retrieval.md).
+
 Session 11 migration 0013 adds immutable, validated producer trace context to existing outbox intents. It is optional correlation metadata, not dispatch/execution authority. Existing payload identities, owner fences and event ordering remain unchanged; old migrations keep their exact checksummed bytes.
 
 Session 12 migration 0014 introduces the independent source repository/policy/snapshot/blob/file domain with exact owner scopes, immutable provenance and fenced atomic READY publication. It grants no judging or public browsing authority. Migrations 0001–0013 remain byte-for-byte unchanged. See [repository snapshot schema](../docs/repository-snapshot-schema.md).

@@ -5,6 +5,7 @@ package ingest
 import (
 	"context"
 	"os/exec"
+	"strconv"
 )
 
 // prlimit execs Git with inherited address-space/CPU limits. Missing enforcement
@@ -13,6 +14,13 @@ func limitedGit(ctx context.Context, args []string) *gitProcess {
 	return limitedProgram(ctx, "git", args)
 }
 func limitedProgram(ctx context.Context, program string, args []string) *gitProcess {
-	return &gitProcess{Cmd: exec.CommandContext(ctx, "prlimit", append([]string{"--as=536870912", "--cpu=60", "--", program}, args...)...), context: ctx}
+	return boundedProgram(ctx, program, args, 512<<20)
 }
-func limitStartedGit(*exec.Cmd) (func(), error) { return func() {}, nil }
+func boundedProgram(ctx context.Context, program string, args []string, memory uintptr) *gitProcess {
+	cpu := "60"
+	if memory > 512<<20 {
+		cpu = "120"
+	}
+	return &gitProcess{Cmd: exec.CommandContext(ctx, "prlimit", append([]string{"--as=" + strconv.FormatUint(uint64(memory), 10), "--cpu=" + cpu, "--", program}, args...)...), context: ctx, memory: memory}
+}
+func limitStartedProgram(*exec.Cmd, uintptr) (func(), error) { return func() {}, nil }

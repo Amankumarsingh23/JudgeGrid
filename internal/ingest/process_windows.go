@@ -14,14 +14,17 @@ func limitedGit(ctx context.Context, args []string) *gitProcess {
 	return limitedProgram(ctx, "git", args)
 }
 func limitedProgram(ctx context.Context, program string, args []string) *gitProcess {
+	return boundedProgram(ctx, program, args, 512<<20)
+}
+func boundedProgram(ctx context.Context, program string, args []string, memory uintptr) *gitProcess {
 	c := exec.CommandContext(ctx, program, args...)
 	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED}
-	return &gitProcess{Cmd: c, context: ctx}
+	return &gitProcess{Cmd: c, context: ctx, memory: memory}
 }
 
 // Attach the suspended process before it can parse input. Closing the job kills
 // descendants too; its 512 MiB job limit covers Git transport/index-pack helpers.
-func limitStartedGit(c *exec.Cmd) (func(), error) {
+func limitStartedProgram(c *exec.Cmd, memory uintptr) (func(), error) {
 	job, e := windows.CreateJobObject(nil, nil)
 	if e != nil {
 		return nil, e
@@ -29,7 +32,7 @@ func limitStartedGit(c *exec.Cmd) (func(), error) {
 	closeJob := func() { windows.CloseHandle(job) }
 	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
 	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_JOB_MEMORY
-	info.JobMemoryLimit = 512 << 20
+	info.JobMemoryLimit = memory
 	if _, e = windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); e != nil {
 		closeJob()
 		return nil, e

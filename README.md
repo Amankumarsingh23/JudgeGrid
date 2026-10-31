@@ -120,12 +120,14 @@ On PowerShell without Go installed, use Docker:
 
 ```powershell
 docker build -f infra/analysis/Dockerfile -t judgegrid-analysis-tools .
-docker run --rm -v "${PWD}:/src" -w /src judgegrid-analysis-tools sh scripts/check.sh
+docker build -f infra/retrieval/Dockerfile -t judgegrid-retrieval-tools .
+python scripts/setup-retrieval-model.py --directory bin/s14-model
+docker run --rm -v "${PWD}:/src" -v "${PWD}/bin/s14-model:/models:ro" -e REPO_EMBEDDING_MODEL=/models -w /src judgegrid-retrieval-tools sh scripts/check.sh
 ```
 
 Checks cover formatting, vet, normal/race-enabled unit tests and all executable builds.
 
-Native full-suite checks also need the [pinned CPython/Tree-sitter setup](docs/repository-symbol-analysis.md#trusted-setup) and an absolute `REPO_ANALYSIS_PYTHON` interpreter path. The separate tooling image above supplies it; ordinary API/worker images do not include Python or the analysis CLI.
+Native full-suite checks also need the [pinned CPython/Tree-sitter setup](docs/repository-symbol-analysis.md#trusted-setup), the [local embedding runtime/model](docs/embedding-policy.md) and absolute `REPO_ANALYSIS_PYTHON`, `REPO_EMBEDDING_PYTHON` and `REPO_EMBEDDING_MODEL` paths. The separate tooling image supplies the runtimes; ordinary API/worker images contain none of the parser/model/search tooling.
 
 PostgreSQL/Redis integration tests are a separate required check:
 
@@ -146,3 +148,5 @@ Session 8 verifies retained sandbox policy and adds a separate trusted, database
 Session 9 adds explicit private S3 bundle storage, verified C++ compilation caching, immutable version publication and owner-scoped development rejudging. New logical evaluation jobs preserve the original submission and history; a guarded pointer selects committed results. These remain trusted host operations. See [object storage](docs/object-storage.md), [compilation cache](docs/compilation-cache.md), [rejudging](docs/rejudging.md), and [ADR 0009](docs/adr/0009-immutable-objects-cache-and-rejudge-jobs.md).
 
 See [the architecture decision](docs/adr/0001-service-boundaries.md).
+
+Session 14 adds private BM25, genuine offline MiniLM embeddings, pgvector exact/HNSW search and hybrid RRF over immutable Session 13 chunks. The trusted `repo-search` tool retains owner/commit provenance and verified source reads. PostgreSQL remains on its exact version-17 base with pinned pgvector compiled in; migration 0016 preserves all earlier migration bytes. See [retrieval setup](docs/repository-retrieval.md), [embedding policy](docs/embedding-policy.md), [ranking](docs/retrieval-ranking.md) and [completion evidence](docs/session-14-completion.md). It adds no public search endpoint or answer generation.

@@ -1,0 +1,15 @@
+# ADR 0014: immutable private lexical and dense retrieval
+
+Status: accepted for Session 14 trusted local tooling.
+
+Build a separate retrieval domain from `analysis.Reader.Ready` and verified chunks. The optional bounded `analysis.Service.ReadChunks` bulk reader validates the same owner, source manifest, immutable file identity, byte spans and hashes while avoiding thousands of repeated manifest decodes. It accepts chunk IDs, never caller-supplied trusted manifests. Source remains untrusted text; neither retrieval nor embedding inference executes repository code.
+
+Persist four token-frequency fields and complete per-field document frequency/length statistics for deterministic weighted BM25. Exact duplicate file/ranges collapse before corpus construction; parent/nested overlap stays in the corpus and is conservatively grouped in returned rankings. Use exact cosine as the default, then combine bounded lexical and dense lists with equal-weight reciprocal rank fusion, k=60. No raw-score addition or extra identifier boost is the default.
+
+Use the pinned ONNX export of `sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions, attention-mask mean pooling, L2 normalization, 256 tokens including special tokens and one CPU inference thread. Hash exact document context/body input and the model/runtime/tokenizer policy. A symmetric model uses raw query text and explicit document language/path/symbol context. Provision public artifacts explicitly with SHA-256 verification; inference loads only local files and has no inference API or dynamic remote model code. Repository content cannot select model URLs or dependencies.
+
+Keep the existing exact PostgreSQL 17 Alpine base digest/data layout and compile pinned pgvector 0.8.2 onto it. Migration 0016 installs the extension into `public` and private application tables into the active schema. Original migration bytes stay unchanged. Each retrieval index has a separate LIST partition/HNSW graph, with SQL owner/index/snapshot checks and a conservative exact fallback for underfilled or highly selective filtered ANN searches. This avoids cross-tenant graph interaction. HNSW m=16, ef_construction=64, ef_search=200, strict iterative scans and max_scan_tuples=10000 are explicit bounds.
+
+Database-clock claims, renewable leases, token/generation guards, repository-scoped verified embedding cache and atomic publication mirror the source/analysis trust boundary. Stop heartbeat before the final short, freshly renewed publication transaction, stage bounded database batches, build the partition/index, validate manifest coverage and publish READY together. Dead workers expose no partial READY. Privileged backend damage fails verification; no silent model fallback is allowed.
+
+Exact CPU vectors are repeatable on the tested runtime; cross-platform floating-point equality is not a portability promise. MiniLM is a compact general English model, not a compiler or a guarantee of code relevance. Query examples are observations, not an evaluation or production capacity claim. Rerankers, context packs, answer generation and agents remain later sessions.

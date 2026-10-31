@@ -11,13 +11,14 @@ type gitProcess struct {
 	release func()
 	finish  func()
 	context context.Context
+	memory  uintptr
 }
 
 func (p *gitProcess) Start() error {
 	if e := p.Cmd.Start(); e != nil {
 		return e
 	}
-	release, e := limitStartedGit(p.Cmd)
+	release, e := limitStartedProgram(p.Cmd, p.memory)
 	if e != nil {
 		p.Cmd.Process.Kill()
 		p.Cmd.Wait()

@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: judgegrid-postgres:17-vector0.8.2
+    build:
+      context: .
+      dockerfile: infra/postgres/Dockerfile
     environment:
       POSTGRES_USER: judgegrid
       POSTGRES_PASSWORD: judgegrid

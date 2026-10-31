@@ -1,0 +1,50 @@
+{
+  "artifacts": {
+    "1_Pooling/config.json": {
+      "bytes": 190,
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+    },
+    "README.md": {
+      "bytes": 10502,
+      "sha256": "dcd602d2fd35c203a247304a06fec6654a12f7941b739f9221a064fe8dc3b7f0"
+    },
+    "config.json": {
+      "bytes": 612,
+      "sha256": "953f9c0d463486b10a6871cc2fd59f223b2c70184f49815e7efbcab5d8908b41"
+    },
+    "onnx/model.onnx": {
+      "bytes": 90405214,
+      "sha256": "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452"
+    },
+    "sentence_bert_config.json": {
+      "bytes": 53,
+      "sha256": "fc1993fde0a95c24ec6c022539d41cf6e2f7c9721e5415d6fb6897472a9cd4b7"
+    },
+    "tokenizer.json": {
+      "bytes": 466247,
+      "sha256": "be50c3628f2bf5bb5e3a7f17b1f74611b2561a3a27eeab05e5aa30f411572037"
+    }
+  },
+  "dimension": 384,
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "normalize": "l2-float32",
+  "pooling": "attention-mask-mean",
+  "python": "3.13.15",
+  "provider": "CPUExecutionProvider",
+  "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "runtime": {
+    "coloredlogs": "15.0.1",
+    "flatbuffers": "25.9.23",
+    "humanfriendly": "10.0",
+    "mpmath": "1.3.0",
+    "numpy": "2.3.4",
+    "onnxruntime": "1.23.2",
+    "packaging": "25.0",
+    "protobuf": "6.33.0",
+    "sympy": "1.14.0",
+    "tokenizers": "0.22.1"
+  },
+  "schema": 1,
+  "threads": 1,
+  "tokens": 256
+}
