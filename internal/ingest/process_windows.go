@@ -11,7 +11,10 @@ import (
 )
 
 func limitedGit(ctx context.Context, args []string) *gitProcess {
-	c := exec.CommandContext(ctx, "git", args...)
+	return limitedProgram(ctx, "git", args)
+}
+func limitedProgram(ctx context.Context, program string, args []string) *gitProcess {
+	c := exec.CommandContext(ctx, program, args...)
 	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED}
 	return &gitProcess{Cmd: c, context: ctx}
 }

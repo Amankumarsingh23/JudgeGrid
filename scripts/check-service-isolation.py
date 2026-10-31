@@ -17,5 +17,5 @@ print("PASS: API/Redis worker/outbox relay have no Docker socket, daemon endpoin
 
 from pathlib import Path
 runtime_copy = next(line for line in Path("Dockerfile").read_text().splitlines() if line.startswith("COPY --from=build /out/"))
-assert all(binary not in runtime_copy for binary in ("judge-agent", "judge-local", "sandbox-demo", "sandbox-reconcile", "judge-admin", "repo-ingest"))
+assert all(binary not in runtime_copy for binary in ("judge-agent", "judge-local", "sandbox-demo", "sandbox-reconcile", "judge-admin", "repo-ingest", "repo-analyze"))
 print("PASS: trusted controller binaries remain absent from ordinary service images")

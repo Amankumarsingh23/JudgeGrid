@@ -54,6 +54,9 @@ func normalize(value, allowed string) string {
 	return "other"
 }
 func operation(v string) string {
+	if strings.HasPrefix(v, "analysis.") {
+		return normalize(v, "analysis.total analysis.parse analysis.completed")
+	}
 	if strings.HasPrefix(v, "ingest.") {
 		return normalize(v, "ingest.accepted ingest.completed ingest.failed ingest.retry ingest.fenced ingest.files ingest.total ingest.git ingest.storage ingest.db ingest.verify ingest.fetch_error ingest.storage_error")
 	}

@@ -1,5 +1,7 @@
 Unit tests live alongside their packages. `sh scripts/check.sh` checks formatting, vet, normal and race-enabled tests, and all executable builds.
 
+Session 13's normal unit suite uses actual pinned Tree-sitter grammars, so it also requires the trusted CPython environment and absolute `REPO_ANALYSIS_PYTHON` from [analysis setup](../docs/repository-symbol-analysis.md#trusted-setup). `infra/analysis/Dockerfile` supplies a separate Linux test image. The tagged `internal/analysis` suite additionally requires `TEST_DATABASE_URL`, independent source-store `REPO_TEST_S3_ENDPOINT`, `REPO_TEST_S3_ACCESS_KEY`, `REPO_TEST_S3_SECRET_KEY`, and `REPO_REAL_PATH` for the exact-commit reconstruction, or the explicitly configured retained lab. It exercises real parsing/storage, scope/ambiguity, reuse and recomputed imports, crashes, fencing, corruption and authorization. See [Session 13 matrix](../docs/session-13-completion.md). These prerequisites fail closed; helper-only subprocess entrypoints are not counted as behavior tests. Source credentials are never shared with ordinary services or judge object storage.
+
 PostgreSQL/Redis integration tests are explicitly selected with `-tags=integration`. They require TEST_DATABASE_URL and TEST_REDIS_ADDR and fail if either is absent. They create fresh isolated schemas and unique test streams, dropping only those resources afterward. Use a development/test database role allowed to create schemas, never production credentials.
 
 ```powershell

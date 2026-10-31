@@ -19,6 +19,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - name: Pinned trusted Tree-sitter runtime and grammar wheels
+        run: |
+          python -m pip install --only-binary=:all: --require-hashes -r internal/analysis/helper/requirements.lock
+          echo "REPO_ANALYSIS_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
       - run: sh scripts/check.sh
       - name: Frontend JavaScript syntax
         run: node --check internal/api/ui/app.js
@@ -54,6 +61,11 @@ jobs:
             -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable \
             -e REPO_TEST_S3_ENDPOINT=repository-store:9000 -e REPO_TEST_S3_ACCESS_KEY -e REPO_TEST_S3_SECRET_KEY -e REPO_REAL_PATH=/src \
             golang:1.26 go test -count=1 -race -tags=integration -v ./internal/ingest
+          docker build -f infra/analysis/Dockerfile -t judgegrid-analysis-tools .
+          docker run --rm --network judgegrid_default -v "$PWD:/src" -w /src \
+            -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable \
+            -e REPO_TEST_S3_ENDPOINT=repository-store:9000 -e REPO_TEST_S3_ACCESS_KEY -e REPO_TEST_S3_SECRET_KEY -e REPO_REAL_PATH=/src \
+            judgegrid-analysis-tools go test -count=1 -race -tags=integration -v ./internal/analysis
       - name: Explicit isolated outbox relay demonstration
         env:
           OUTBOX_RELAY_ENABLED: 'true'

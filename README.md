@@ -6,7 +6,9 @@ For the explicitly enabled local browser workspace, see [local web setup](docs/l
 
 Session 11 adds privacy-safe OpenTelemetry traces, Prometheus metrics, provisioned Grafana/Tempo diagnostics, bounded load profiles and controlled fault experiments. See [observability](docs/observability.md), [load testing](docs/load-testing.md), [chaos experiments](docs/chaos-experiments.md) and the [completion evidence](docs/session-11-completion.md). Telemetry is disabled by default and does not grant execution authority.
 
-Session 12 adds separately authorized, commit-pinned private repository snapshots: safe Git object reads, deterministic manifests, incremental verified reuse and fenced publication. See [repository ingestion](docs/repository-ingestion.md), [snapshot schema](docs/repository-snapshot-schema.md) and [Session 12 evidence](docs/session-12-completion.md). The trusted CLI has no Docker authority and is absent from normal services. No embeddings, source analysis or AI agents are implemented yet.
+Session 12 adds separately authorized, commit-pinned private repository snapshots: safe Git object reads, deterministic manifests, incremental verified reuse and fenced publication. See [repository ingestion](docs/repository-ingestion.md), [snapshot schema](docs/repository-snapshot-schema.md) and [Session 12 evidence](docs/session-12-completion.md). The trusted CLI has no Docker authority and is absent from normal services.
+
+Session 13 adds bounded real Tree-sitter parsing, owner-scoped immutable symbol/call graphs, verified structural chunks and snapshot-aware parse reuse. See [symbol analysis](docs/repository-symbol-analysis.md), [chunk provenance](docs/code-chunk-schema.md), [ADR 0013](docs/adr/0013-bounded-tree-sitter-analysis.md) and [Session 13 evidence](docs/session-13-completion.md). The opted-in analysis CLI is separate from public services. Retrieval ranking, embeddings and AI agents are not implemented.
 
 ## Run
 
@@ -117,10 +119,15 @@ sh scripts/check.sh
 On PowerShell without Go installed, use Docker:
 
 ```powershell
-docker run --rm -v "${PWD}:/src" -w /src golang:1.26 sh scripts/check.sh
+docker build -f infra/analysis/Dockerfile -t judgegrid-analysis-tools .
+docker run --rm -v "${PWD}:/src" -w /src judgegrid-analysis-tools sh scripts/check.sh
 ```
 
-Checks cover formatting, vet, normal/race-enabled unit tests and all executable builds. PostgreSQL/Redis integration tests are a separate required check:
+Checks cover formatting, vet, normal/race-enabled unit tests and all executable builds.
+
+Native full-suite checks also need the [pinned CPython/Tree-sitter setup](docs/repository-symbol-analysis.md#trusted-setup) and an absolute `REPO_ANALYSIS_PYTHON` interpreter path. The separate tooling image above supplies it; ordinary API/worker images do not include Python or the analysis CLI.
+
+PostgreSQL/Redis integration tests are a separate required check:
 
 ```powershell
 docker run --rm --network judgegrid_default -v "${PWD}:/src" -v judgegrid-go-cache:/go -w /src -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable -e TEST_REDIS_ADDR=redis:6379 golang:1.26 go test -race -tags=integration -v ./tests

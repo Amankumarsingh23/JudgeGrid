@@ -17,4 +17,6 @@ Session 11 migration 0013 adds immutable, validated producer trace context to ex
 
 Session 12 migration 0014 introduces the independent source repository/policy/snapshot/blob/file domain with exact owner scopes, immutable provenance and fenced atomic READY publication. It grants no judging or public browsing authority. Migrations 0001–0013 remain byte-for-byte unchanged. See [repository snapshot schema](../docs/repository-snapshot-schema.md).
 
+Session 13 migration 0015 adds independent private analysis policies, fenced indexes/file-attempt diagnostics, immutable symbols/imports/calls/edges/chunks and repository-scoped file-local syntax cache. Analysis publication accounts for the complete source manifest and never mutates source or judging history. Migrations 0001–0014 remain unchanged. See [analysis/chunk schema](../docs/code-chunk-schema.md).
+
 Session 3 adds development_dispatch_receipts in migration 0002. Its unique (submission_id, attempt) key guards only isolated harness effects; it is not a judge verdict, execution lease or attempt-fencing record. The original migration is unchanged.

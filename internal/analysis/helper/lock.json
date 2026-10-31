@@ -1,0 +1,97 @@
+{
+  "packages": {
+    "tree-sitter": "0.26.0",
+    "tree-sitter-go": "0.25.0",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-python": "0.25.0",
+    "tree-sitter-typescript": "0.23.2"
+  },
+  "platforms": {
+    "linux-x86_64": {
+      "tree-sitter": {
+        "files": {
+          "tree_sitter/__init__.py": "0754ef728b311cfb8eb64de361390cbe1344f280c7f40fded08161a6e650268f",
+          "tree_sitter/_binding.cpython-313-x86_64-linux-gnu.so": "92d8e6c46ccd676779179ea0958231532410640587a6f1ceb455aa51f8dabfd4"
+        },
+        "wheel": "tree_sitter-0.26.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+        "wheel_sha256": "7075ef857ef86f327dbb72d1e2574dda78db5754b3a1fca6506acd7fe5d561a7"
+      },
+      "tree-sitter-go": {
+        "files": {
+          "tree_sitter_go/__init__.py": "e5119cbb42f38cde9e7b318749457b332edd0f2cb09e35ba56b457a46bb55fe7",
+          "tree_sitter_go/_binding.abi3.so": "3e5f2df83c31f1b9f511ad44147d89b822905fdd54ebeca28531026aca076983"
+        },
+        "wheel": "tree_sitter_go-0.25.0-cp310-abi3-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl",
+        "wheel_sha256": "04b3b3cb4aff18e74e28d49b716c6f24cb71ddfdd66768987e26e4d0fa812f74"
+      },
+      "tree-sitter-javascript": {
+        "files": {
+          "tree_sitter_javascript/__init__.py": "2698d9027b5e25e144001780969f0bd74bdc54cac97eca4f6b06cda587811167",
+          "tree_sitter_javascript/_binding.abi3.so": "3e4c4552c6aa6b9c45c47177ff87c150d384c5a54e70b29d45bc1556b90cbe53"
+        },
+        "wheel": "tree_sitter_javascript-0.25.0-cp310-abi3-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl",
+        "wheel_sha256": "9dc04ba91fc8583344e57c1f1ed5b2c97ecaaf47480011b92fbeab8dda96db75"
+      },
+      "tree-sitter-python": {
+        "files": {
+          "tree_sitter_python/__init__.py": "98fa266176168e70ea8dd6b972dded515ebf1226a78e34cdd840a393e861842f",
+          "tree_sitter_python/_binding.abi3.so": "edf0862b2fda605a9c439955b2f60b248941c9af709222e7b1566bc603a0aa04"
+        },
+        "wheel": "tree_sitter_python-0.25.0-cp310-abi3-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl",
+        "wheel_sha256": "86f118e5eecad616ecdb81d171a36dde9bef5a0b21ed71ea9c3e390813c3baf5"
+      },
+      "tree-sitter-typescript": {
+        "files": {
+          "tree_sitter_typescript/__init__.py": "48bcf7ce38cd4aed60ac59ad988e39db8498a57359a84c94c0c31762b145a0f3",
+          "tree_sitter_typescript/_binding.abi3.so": "ab4a1274b70b672cba175f09cc96cdbe1af92edbb1d09d01f053ba73035208a1"
+        },
+        "wheel": "tree_sitter_typescript-0.23.2-cp39-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "wheel_sha256": "e96d36b85bcacdeb8ff5c2618d75593ef12ebaf1b4eace3477e2bdb2abb1752c"
+      }
+    },
+    "win32-AMD64": {
+      "tree-sitter": {
+        "files": {
+          "tree_sitter/__init__.py": "edf67e1ccbe921e10379de11e563b7b808f40439a18c9a19b8c81db49bd2dbc4",
+          "tree_sitter/_binding.cp313-win_amd64.pyd": "d8efa5533a1c79cc404df3a0ff03d76626ad50d54b74d97e4cf6e30ab85bebe4"
+        },
+        "wheel": "tree_sitter-0.26.0-cp313-cp313-win_amd64.whl",
+        "wheel_sha256": "93e220cab7e6a823efeb2046c49171427de92ef71c7c681c01820d14d8d3721f"
+      },
+      "tree-sitter-go": {
+        "files": {
+          "tree_sitter_go/__init__.py": "e5119cbb42f38cde9e7b318749457b332edd0f2cb09e35ba56b457a46bb55fe7",
+          "tree_sitter_go/_binding.pyd": "8d58902e0e15aa9a8b98f72532b784497936c8d7be22e2cd94ff72e4cfaf63cb"
+        },
+        "wheel": "tree_sitter_go-0.25.0-cp310-abi3-win_amd64.whl",
+        "wheel_sha256": "30d4ada57a223dfc2c32d942f44d284d40f3d1215ddcf108f96807fd36d53022"
+      },
+      "tree-sitter-javascript": {
+        "files": {
+          "tree_sitter_javascript/__init__.py": "2698d9027b5e25e144001780969f0bd74bdc54cac97eca4f6b06cda587811167",
+          "tree_sitter_javascript/_binding.pyd": "1280ed0d26d0c2dcf9ace5425101b76eb9a31ec9f9d56af6c2dce33e107ee834"
+        },
+        "wheel": "tree_sitter_javascript-0.25.0-cp310-abi3-win_amd64.whl",
+        "wheel_sha256": "e5ed840f5bd4a3f0272e441d19429b26eedc257abe5574c8546da6b556865e3c"
+      },
+      "tree-sitter-python": {
+        "files": {
+          "tree_sitter_python/__init__.py": "98fa266176168e70ea8dd6b972dded515ebf1226a78e34cdd840a393e861842f",
+          "tree_sitter_python/_binding.pyd": "5d1068799f4fa77609d741e0c56df941cecdee43456d6e019f2c9207d1d1947c"
+        },
+        "wheel": "tree_sitter_python-0.25.0-cp310-abi3-win_amd64.whl",
+        "wheel_sha256": "9bcde33f18792de54ee579b00e1b4fe186b7926825444766f849bf7181793a76"
+      },
+      "tree-sitter-typescript": {
+        "files": {
+          "tree_sitter_typescript/__init__.py": "48bcf7ce38cd4aed60ac59ad988e39db8498a57359a84c94c0c31762b145a0f3",
+          "tree_sitter_typescript/_binding.pyd": "7c28060c7ebb890c54aebff270d4e6341941f9d749788e97613ede90d2e2c0d9"
+        },
+        "wheel": "tree_sitter_typescript-0.23.2-cp39-abi3-win_amd64.whl",
+        "wheel_sha256": "3f730b66396bc3e11811e4465c41ee45d9e9edd6de355a58bbbc49fa770da8f9"
+      }
+    }
+  },
+  "python": "3.13",
+  "schema": 1
+}
