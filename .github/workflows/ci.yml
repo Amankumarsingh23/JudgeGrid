@@ -13,6 +13,8 @@ jobs:
       QUEUE_STREAM: dev:judgegrid:ci-dispatch
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -38,6 +40,20 @@ jobs:
           golang:1.26 go test -race -tags=integration -v ./tests
       - run: python3 scripts/smoke.py
       - run: python3 scripts/dispatch_smoke.py
+      - name: Commit-pinned repository snapshots and actual private-source storage faults
+        run: |
+          export REPO_MINIO_ROOT_USER=judgegrid-repository-ci
+          export REPO_MINIO_ROOT_PASSWORD=$(openssl rand -hex 32)
+          echo "::add-mask::$REPO_MINIO_ROOT_PASSWORD"
+          export REPO_TEST_S3_ACCESS_KEY=$REPO_MINIO_ROOT_USER
+          export REPO_TEST_S3_SECRET_KEY=$REPO_MINIO_ROOT_PASSWORD
+          trap 'docker compose -f docker-compose.yml -f infra/repository-ingestion.compose.yml --profile repository-storage rm -s -f repository-store' EXIT
+          docker compose -f docker-compose.yml -f infra/repository-ingestion.compose.yml --profile repository-storage config --quiet
+          docker compose -f docker-compose.yml -f infra/repository-ingestion.compose.yml --profile repository-storage up --build --no-deps -d --wait repository-store
+          docker run --rm --network judgegrid_default -v "$PWD:/src" -w /src \
+            -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable \
+            -e REPO_TEST_S3_ENDPOINT=repository-store:9000 -e REPO_TEST_S3_ACCESS_KEY -e REPO_TEST_S3_SECRET_KEY -e REPO_REAL_PATH=/src \
+            golang:1.26 go test -count=1 -race -tags=integration -v ./internal/ingest
       - name: Explicit isolated outbox relay demonstration
         env:
           OUTBOX_RELAY_ENABLED: 'true'

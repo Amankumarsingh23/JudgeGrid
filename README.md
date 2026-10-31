@@ -6,6 +6,8 @@ For the explicitly enabled local browser workspace, see [local web setup](docs/l
 
 Session 11 adds privacy-safe OpenTelemetry traces, Prometheus metrics, provisioned Grafana/Tempo diagnostics, bounded load profiles and controlled fault experiments. See [observability](docs/observability.md), [load testing](docs/load-testing.md), [chaos experiments](docs/chaos-experiments.md) and the [completion evidence](docs/session-11-completion.md). Telemetry is disabled by default and does not grant execution authority.
 
+Session 12 adds separately authorized, commit-pinned private repository snapshots: safe Git object reads, deterministic manifests, incremental verified reuse and fenced publication. See [repository ingestion](docs/repository-ingestion.md), [snapshot schema](docs/repository-snapshot-schema.md) and [Session 12 evidence](docs/session-12-completion.md). The trusted CLI has no Docker authority and is absent from normal services. No embeddings, source analysis or AI agents are implemented yet.
+
 ## Run
 
 Install Docker Desktop with Linux containers, then run from the repository root:

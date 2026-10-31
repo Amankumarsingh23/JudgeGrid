@@ -15,4 +15,6 @@ Migrations are forward-only. Back up persistent data before future schema change
 
 Session 11 migration 0013 adds immutable, validated producer trace context to existing outbox intents. It is optional correlation metadata, not dispatch/execution authority. Existing payload identities, owner fences and event ordering remain unchanged; old migrations keep their exact checksummed bytes.
 
+Session 12 migration 0014 introduces the independent source repository/policy/snapshot/blob/file domain with exact owner scopes, immutable provenance and fenced atomic READY publication. It grants no judging or public browsing authority. Migrations 0001–0013 remain byte-for-byte unchanged. See [repository snapshot schema](../docs/repository-snapshot-schema.md).
+
 Session 3 adds development_dispatch_receipts in migration 0002. Its unique (submission_id, attempt) key guards only isolated harness effects; it is not a judge verdict, execution lease or attempt-fencing record. The original migration is unchanged.

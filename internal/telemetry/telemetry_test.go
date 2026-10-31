@@ -65,6 +65,26 @@ func TestMetricValuesAndCardinality(t *testing.T) {
 		t.Fatal("unbounded series", rows)
 	}
 }
+
+func TestIngestionBytesAndLabelCardinality(t *testing.T) {
+	r := setup(t, nil)
+	IngestionBytes("fetched", 48)
+	IngestionBytes("reused", 35)
+	CountN("ingest.files", "included", 5)
+	for range 1000 {
+		IngestionBytes("private-repository-or-file", 1)
+	}
+	s := metrics(r)
+	if strings.Contains(s, "private-repository") || !strings.Contains(s, `stage="fetched"} 48`) || !strings.Contains(s, `stage="reused"} 35`) {
+		t.Fatal(s)
+	}
+	rows, _ := r.Registry.Gather()
+	for _, row := range rows {
+		if row.GetName() == "judgegrid_ingestion_bytes_total" && len(row.Metric) != 3 {
+			t.Fatal("unbounded byte counter labels")
+		}
+	}
+}
 func TestDurableSpanLinksAndSafeAttributes(t *testing.T) {
 	e := &memoryExporter{}
 	r := setup(t, e)

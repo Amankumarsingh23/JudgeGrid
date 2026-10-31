@@ -30,17 +30,18 @@ var current atomic.Pointer[Runtime]
 var buckets = []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2, 5, 10, 30, 60, 120, 300}
 
 type Runtime struct {
-	age          prometheus.Gauge
-	stamp        prometheus.Gauge
-	Registry     *prometheus.Registry
-	operations   *prometheus.CounterVec
-	duration     *prometheus.HistogramVec
-	gauge        *prometheus.GaugeVec
-	httpCount    *prometheus.CounterVec
-	httpDuration *prometheus.HistogramVec
-	provider     *sdk.TracerProvider
-	processor    *processor
-	server       *http.Server
+	age            prometheus.Gauge
+	stamp          prometheus.Gauge
+	Registry       *prometheus.Registry
+	operations     *prometheus.CounterVec
+	ingestionBytes *prometheus.CounterVec
+	duration       *prometheus.HistogramVec
+	gauge          *prometheus.GaugeVec
+	httpCount      *prometheus.CounterVec
+	httpDuration   *prometheus.HistogramVec
+	provider       *sdk.TracerProvider
+	processor      *processor
+	server         *http.Server
 }
 
 func Enabled() bool { return current.Load() != nil }
@@ -53,15 +54,33 @@ func normalize(value, allowed string) string {
 	return "other"
 }
 func operation(v string) string {
+	if strings.HasPrefix(v, "ingest.") {
+		return normalize(v, "ingest.accepted ingest.completed ingest.failed ingest.retry ingest.fenced ingest.files ingest.total ingest.git ingest.storage ingest.db ingest.verify ingest.fetch_error ingest.storage_error")
+	}
 	return normalize(v, "http authorize create accepted rejudge.accepted rejudge.request terminal outbox.claim outbox.retry outbox.publish outbox.record redis.publish redis.process redis.duplicate scheduler.poll scheduler.admit lease.claim lease.renew lease.fail lease.recovery fence.reject bundle.fetch bundle.verify cache.restore cache.lookup cache.hit cache.miss cache.build cache.publish sandbox.prepare sandbox.workspace sandbox.stage sandbox.attached sandbox.compile sandbox.run sandbox.cleanup sandbox.timeout agent.execute judge.evaluate result.persist sse.connect sse.reconnect sse.replay sse.reset sse.write sse.slow sse.disconnect sse.delivery reconcile.scan reconcile.reap reconcile.preserve reconcile.error exporter.export exporter.drop backend.snapshot clock.skew accepted_admission eligible_admission outbox_delay accepted_terminal claimed_start")
 }
 func outcome(v string) string {
+	if v == "discovered" || v == "included" || v == "excluded" {
+		return v
+	}
 	return normalize(v, "ok error canceled timeout unavailable constraint fenced throttle capacity AC WA CE RE TLE MLE OLE FAILED QUEUED RUNNING COMPLETED PENDING CLAIMED PUBLISHED QUARANTINED ACTIVE EXPIRED renewed hit miss build cache_hit compile prepare run cleaned replay reset connected disconnected transient permanent")
 }
 func language(v string) string { return normalize(v, "cpp17 python3 go") }
 func Count(op, result, lang string) {
 	if r := current.Load(); r != nil {
 		r.operations.WithLabelValues(operation(op), outcome(result), language(lang)).Inc()
+	}
+}
+
+// CountN has the same fixed label policy as Count; callers cannot add label names.
+func CountN(op, result string, n float64) {
+	if r := current.Load(); r != nil && n >= 0 {
+		r.operations.WithLabelValues(operation(op), outcome(result), "other").Add(n)
+	}
+}
+func IngestionBytes(kind string, n float64) {
+	if r := current.Load(); r != nil && n >= 0 {
+		r.ingestionBytes.WithLabelValues(normalize(kind, "processed fetched reused")).Add(n)
 	}
 }
 func Observe(op, result, lang string, seconds float64) {
@@ -200,11 +219,12 @@ func begin(ctx context.Context, op, lang, parent string) (context.Context, func(
 }
 func New(service string, exporter sdk.SpanExporter) *Runtime {
 	reg := prometheus.NewRegistry()
-	labels := prometheus.Labels{"service": normalize(service, "api outbox-relay judge-agent worker reconciler test")}
+	labels := prometheus.Labels{"service": normalize(service, "api outbox-relay judge-agent worker reconciler repository-ingest test")}
 	r := &Runtime{Registry: reg, operations: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "judgegrid_operations_total", Help: "Physical operation observations; accepted/terminal are committed logical outcomes.", ConstLabels: labels}, []string{"operation", "outcome", "language"}), duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "judgegrid_duration_seconds", Help: "Defined phase duration in seconds; asynchronous timestamp estimates may include commit and clock skew.", Buckets: buckets, ConstLabels: labels}, []string{"phase", "outcome", "language"}), gauge: prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "judgegrid_state", Help: "Cached bounded DB snapshot; capped=1 indicates a 10001-row lower-bound sample.", ConstLabels: labels}, []string{"kind", "state"}), httpCount: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "judgegrid_http_requests_total", Help: "HTTP responses by bounded route/method/status class.", ConstLabels: labels}, []string{"route", "method", "status_class"}), httpDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "judgegrid_http_duration_seconds", Help: "HTTP handler duration including stream lifetime for events.", Buckets: buckets, ConstLabels: labels}, []string{"route", "method", "status_class"})}
 	r.age = prometheus.NewGauge(prometheus.GaugeOpts{Name: "judgegrid_outbox_oldest_pending_seconds", Help: "Oldest sampled pending/claimed intent age in seconds.", ConstLabels: labels})
 	r.stamp = prometheus.NewGauge(prometheus.GaugeOpts{Name: "judgegrid_snapshot_updated_timestamp_seconds", Help: "Unix timestamp of the last successful bounded database inventory.", ConstLabels: labels})
-	reg.MustRegister(r.operations, r.duration, r.gauge, r.httpCount, r.httpDuration, r.age, r.stamp)
+	r.ingestionBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "judgegrid_ingestion_bytes_total", Help: "Bounded source-byte observations by processing stage; no repository identity labels.", ConstLabels: labels}, []string{"stage"})
+	reg.MustRegister(r.operations, r.duration, r.gauge, r.httpCount, r.httpDuration, r.age, r.stamp, r.ingestionBytes)
 	options := []sdk.TracerProviderOption{sdk.WithResource(resource.NewSchemaless(attribute.String("service.name", labels["service"]), attribute.String("service.version", "session11"))), sdk.WithSampler(sdk.AlwaysSample()), sdk.WithRawSpanLimits(sdk.SpanLimits{AttributeValueLengthLimit: 128, AttributeCountLimit: 16, EventCountLimit: 0, LinkCountLimit: 4, AttributePerLinkCountLimit: 0})}
 	if exporter != nil {
 		r.processor = newProcessor(exporter, r)

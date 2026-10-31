@@ -2,6 +2,8 @@
 
 Metrics summarize populations; traces explain causally related work; logs record selected events. A counter increases until its process restarts, a gauge reports current/cached state, and a histogram records observations into cumulative buckets. Prometheus `rate` handles counter resets; histogram quantiles must aggregate buckets across instances before computing the quantile. Averaging separate instance p95 values is incorrect.
 
+Session 12's trusted `repository-ingest` CLI reuses this optional runtime with bounded `ingest.*` operations and `judgegrid_ingestion_bytes_total` processing-stage counters. It does not attach owners, repository locations/commits, source paths/hashes or source bytes to telemetry. One-shot process counters can disappear before a scrape; use [immutable snapshot/attempt evidence](repository-snapshot-schema.md) for durable accounting. No public metrics/ingestion route or new default service is enabled.
+
 ```mermaid
 flowchart LR
  API[API: private metrics + traces] -->|durable producer context| DB[(PostgreSQL authority)]
