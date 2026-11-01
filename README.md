@@ -121,8 +121,10 @@ On PowerShell without Go installed, use Docker:
 ```powershell
 docker build -f infra/analysis/Dockerfile -t judgegrid-analysis-tools .
 docker build -f infra/retrieval/Dockerfile -t judgegrid-retrieval-tools .
+docker build -f infra/context/Dockerfile -t judgegrid-context-tools .
 python scripts/setup-retrieval-model.py --directory bin/s14-model
-docker run --rm -v "${PWD}:/src" -v "${PWD}/bin/s14-model:/models:ro" -e REPO_EMBEDDING_MODEL=/models -w /src judgegrid-retrieval-tools sh scripts/check.sh
+python scripts/setup-context-model.py --directory bin/s15-reranker
+docker run --rm -v "${PWD}:/src" -v "${PWD}/bin/s14-model:/models:ro" -v "${PWD}/bin/s15-reranker:/reranker:ro" -e REPO_EMBEDDING_MODEL=/models -e REPO_CONTEXT_MODEL=/reranker -w /src judgegrid-context-tools sh scripts/check.sh
 ```
 
 Checks cover formatting, vet, normal/race-enabled unit tests and all executable builds.
@@ -150,3 +152,5 @@ Session 9 adds explicit private S3 bundle storage, verified C++ compilation cach
 See [the architecture decision](docs/adr/0001-service-boundaries.md).
 
 Session 14 adds private BM25, genuine offline MiniLM embeddings, pgvector exact/HNSW search and hybrid RRF over immutable Session 13 chunks. The trusted `repo-search` tool retains owner/commit provenance and verified source reads. PostgreSQL remains on its exact version-17 base with pinned pgvector compiled in; migration 0016 preserves all earlier migration bytes. See [retrieval setup](docs/repository-retrieval.md), [embedding policy](docs/embedding-policy.md), [ranking](docs/retrieval-ranking.md) and [completion evidence](docs/session-14-completion.md). It adds no public search endpoint or answer generation.
+
+Session 15 adds trusted local cross-encoder reranking, conservative structural expansion, span-based MMR and exact-token evidence packing through `repo-context`. It consumes the existing READY retrieval index without corpus re-embedding or migration. See [reranking](docs/repository-reranking.md), [context schema](docs/context-pack-schema.md), [grounding/operator setup](docs/context-grounding.md) and [completion evidence](docs/session-15-completion.md). Source remains inert, verified data; no answer generation or context-driven actions are implemented.

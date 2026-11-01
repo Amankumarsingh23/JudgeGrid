@@ -36,6 +36,7 @@ type lab struct {
 	snapshot                 ingest.Snapshot
 	index                    analysis.Index
 	dir, bucket, url, schema string
+	preserve                 *bool
 }
 
 func setup(t *testing.T) *lab {
@@ -61,13 +62,17 @@ func setup(t *testing.T) *lab {
 	}
 	cfg.ConnConfig.RuntimeParams["search_path"] = schema
 	cfg.MaxConns = 12
+	preserve := new(bool)
 	db, e := pgxpool.NewWithConfig(ctx, cfg)
 	if e != nil {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() {
 		db.Close()
-		_, e := admin.Exec(context.Background(), "DROP SCHEMA "+quoted+" CASCADE")
+		var e error
+		if !*preserve {
+			_, e = admin.Exec(context.Background(), "DROP SCHEMA "+quoted+" CASCADE")
+		}
 		admin.Close()
 		if e != nil {
 			t.Error(e)
@@ -92,7 +97,7 @@ func setup(t *testing.T) *lab {
 	if e = os.Mkdir(dir, 0700); e != nil {
 		t.Fatal(e)
 	}
-	l := &lab{db: db, dir: dir, bucket: bucket, url: cfg.ConnString(), schema: schema}
+	l := &lab{db: db, dir: dir, bucket: bucket, url: cfg.ConnString(), schema: schema, preserve: preserve}
 	l.git(t, "init", "--initial-branch=main")
 	l.git(t, "config", "core.autocrlf", "false")
 	l.write(t, "go.mod", "module example.test/retrieval\n")
@@ -606,8 +611,10 @@ func TestS14ActualRetainedSearchEvidence(t *testing.T) {
 	owner := "aman-s12"
 	bucket := os.Getenv("S13_RETAINED_BUCKET")
 	var svc *Service
+	var ciLab *lab
 	if base == "" {
 		l := setup(t)
+		ciLab = l
 		root := os.Getenv("REPO_REAL_PATH")
 		if root == "" {
 			t.Fatal("CI authorized exact-commit fixture path required")
@@ -735,5 +742,14 @@ func TestS14ActualRetainedSearchEvidence(t *testing.T) {
 	}
 	if e = svc.Verify(ctx, owner, a.ID); e != nil {
 		t.Fatal(e)
+	}
+	// Explicit CI-only transfer of the already verified fixture to Session 15.
+	// The default regression suite still cleans up every isolated schema.
+	if path := os.Getenv("S15_CI_HANDOFF_FILE"); path != "" && ciLab != nil {
+		body := canonical(map[string]string{"schema": ciLab.schema, "bucket": ciLab.bucket, "owner": owner, "retrieval": a.ID, "analysis": a.Analysis, "snapshot": a.Snapshot, "repository": a.Repository, "commit": manifest.Commit})
+		if e = os.WriteFile(path, body, 0600); e != nil {
+			t.Fatal(e)
+		}
+		*ciLab.preserve = true
 	}
 }

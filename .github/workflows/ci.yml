@@ -32,6 +32,11 @@ jobs:
           python scripts/setup-retrieval-model.py --directory "$RUNNER_TEMP/judgegrid-model"
           echo "REPO_EMBEDDING_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
           echo "REPO_EMBEDDING_MODEL=$RUNNER_TEMP/judgegrid-model" >> "$GITHUB_ENV"
+      - name: Pinned offline cross-encoder and context tokenizer artifacts
+        run: |
+          python scripts/setup-context-model.py --directory "$RUNNER_TEMP/judgegrid-reranker"
+          echo "REPO_CONTEXT_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "REPO_CONTEXT_MODEL=$RUNNER_TEMP/judgegrid-reranker" >> "$GITHUB_ENV"
       - run: sh scripts/check.sh
       - name: Frontend JavaScript syntax
         run: node --check internal/api/ui/app.js
@@ -73,11 +78,19 @@ jobs:
             -e REPO_TEST_S3_ENDPOINT=repository-store:9000 -e REPO_TEST_S3_ACCESS_KEY -e REPO_TEST_S3_SECRET_KEY -e REPO_REAL_PATH=/src \
             judgegrid-analysis-tools go test -count=1 -race -tags=integration -v ./internal/analysis
           docker build -f infra/retrieval/Dockerfile -t judgegrid-retrieval-tools .
+          mkdir -p bin
           docker run --rm --network judgegrid_default -v "$PWD:/src" -v "$RUNNER_TEMP/judgegrid-model:/models:ro" -w /src \
             -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable \
             -e REPO_TEST_S3_ENDPOINT=repository-store:9000 -e REPO_TEST_S3_ACCESS_KEY -e REPO_TEST_S3_SECRET_KEY -e REPO_REAL_PATH=/src \
             -e REPO_EMBEDDING_MODEL=/models \
+            -e S15_CI_HANDOFF_FILE=/src/bin/s15-ci-handoff.json \
             judgegrid-retrieval-tools go test -count=1 -race -tags=integration -v ./internal/retrieval
+          docker build -f infra/context/Dockerfile -t judgegrid-context-tools .
+          docker run --rm --network judgegrid_default -v "$PWD:/src" -v "$RUNNER_TEMP/judgegrid-model:/models:ro" -v "$RUNNER_TEMP/judgegrid-reranker:/reranker:ro" -w /src \
+            -e TEST_DATABASE_URL=postgres://judgegrid:judgegrid@postgres:5432/judgegrid?sslmode=disable \
+            -e REPO_TEST_S3_ENDPOINT=repository-store:9000 -e REPO_TEST_S3_ACCESS_KEY -e REPO_TEST_S3_SECRET_KEY \
+            -e REPO_EMBEDDING_MODEL=/models -e REPO_CONTEXT_MODEL=/reranker -e S15_CI_HANDOFF_FILE=/src/bin/s15-ci-handoff.json \
+            judgegrid-context-tools go test -count=1 -race -tags=integration -v ./internal/contextpack
       - name: Explicit isolated outbox relay demonstration
         env:
           OUTBOX_RELAY_ENABLED: 'true'

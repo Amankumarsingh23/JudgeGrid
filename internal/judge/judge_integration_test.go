@@ -106,6 +106,34 @@ func TestRealJudgeMatrix(t *testing.T) {
 		{"stderr", "python3", "import os\nwhile True: os.write(2,b'x'*8192)", "OLE", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "memory" {
+				// Isolate the OOM assertion from the unchanged two-second wall guard.
+				// A stricter cap reaches memory pressure sooner on Docker Desktop;
+				// append a fixture version rather than mutating a sealed version.
+				var original, limited int64
+				if e := pool.QueryRow(ctx, `SELECT current_version_id FROM problems WHERE id=$1`, problem).Scan(&original); e != nil {
+					t.Fatal(e)
+				}
+				if e := pool.QueryRow(ctx, `INSERT INTO problem_versions(problem_id,version_number,statement,time_limit_ms,memory_limit_kb) SELECT problem_id,version_number+1,statement,time_limit_ms,32768 FROM problem_versions WHERE id=$1 RETURNING id`, original).Scan(&limited); e != nil {
+					t.Fatal(e)
+				}
+				suite, _ := bundles.Demo("two-sum")
+				ref, e := store.Put(suite)
+				if e != nil {
+					t.Fatal(e)
+				}
+				if e = storage.BindSuite(ctx, pool, limited, ref); e != nil {
+					t.Fatal(e)
+				}
+				if _, e = pool.Exec(ctx, `UPDATE problems SET current_version_id=$2 WHERE id=$1`, problem, limited); e != nil {
+					t.Fatal(e)
+				}
+				t.Cleanup(func() {
+					if _, e := pool.Exec(ctx, `UPDATE problems SET current_version_id=$2 WHERE id=$1`, problem, original); e != nil {
+						t.Error(e)
+					}
+				})
+			}
 			sub, _, e := repo.Create(ctx, "alice", "real-"+tc.name, domain.CreateRequest{ProblemID: problem, Language: tc.lang, SourceCode: tc.source})
 			if e != nil {
 				t.Fatal(e)
@@ -113,7 +141,11 @@ func TestRealJudgeMatrix(t *testing.T) {
 			before := engine.Counts()
 			v, e := service.Run(ctx, "alice", sub.ID)
 			if e != nil || v.Verdict == nil || *v.Verdict != tc.want || v.TestsRun != tc.runs {
-				t.Fatalf("summary=%+v error=%v", v, e)
+				actual := "<nil>"
+				if v.Verdict != nil {
+					actual = string(*v.Verdict)
+				}
+				t.Fatalf("verdict=%s want=%s summary=%+v error=%v", actual, tc.want, v, e)
 			}
 			after := engine.Counts()
 			if tc.lang == "cpp17" && after.Compilations-before.Compilations != 1 {
