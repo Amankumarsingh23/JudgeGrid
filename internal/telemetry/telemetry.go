@@ -54,6 +54,9 @@ func normalize(value, allowed string) string {
 	return "other"
 }
 func operation(v string) string {
+	if strings.HasPrefix(v, "research.") {
+		return normalize(v, "research.resume research.search_code research.read_source research.lookup_symbol research.inspect_graph research.inspect_evidence")
+	}
 	if strings.HasPrefix(v, "context.") {
 		return normalize(v, "context.build context.score context.pack")
 	}
