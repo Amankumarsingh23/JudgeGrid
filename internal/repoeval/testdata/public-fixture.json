@@ -1,0 +1,8 @@
+{
+  "safe_to_publish": true,
+  "provenance": "Codex-authored synthetic source and provisional labels; contains no user repository data or private queries.",
+  "path": "guard.go",
+  "source": "package guard\nfunc Guard(stale bool) error {\n if stale { return ErrOwned }\n return nil\n}\n",
+  "question": "Where does the synthetic guard reject a stale owner?",
+  "critical_fact": "if stale { return ErrOwned }"
+}

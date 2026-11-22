@@ -353,6 +353,7 @@ func TestS15RetainedEvidence(t *testing.T) {
 		t.Fatal(e)
 	}
 	var cleanupSchema string
+	preserveForEvaluation := false
 	if url == "" {
 		path := os.Getenv("S15_CI_HANDOFF_FILE")
 		if path == "" {
@@ -387,6 +388,9 @@ func TestS15RetainedEvidence(t *testing.T) {
 	defer db.Close()
 	if cleanupSchema != "" {
 		defer func() {
+			if preserveForEvaluation {
+				return
+			}
 			admin, e := pgxpool.New(context.Background(), os.Getenv("TEST_DATABASE_URL"))
 			if e != nil {
 				t.Error(e)
@@ -482,5 +486,12 @@ func TestS15RetainedEvidence(t *testing.T) {
 	var vectorsAfter int
 	if e = db.QueryRow(ctx, `SELECT count(*) FROM retrieval_embedding_cache WHERE repository_id=$1`, a.Repository).Scan(&vectorsAfter); e != nil || vectorsAfter != vectorsBefore {
 		t.Fatal("context re-embedded corpus", e)
+	}
+	if path := os.Getenv("S16_CI_HANDOFF_FILE"); path != "" && cleanupSchema != "" {
+		body := canonical(map[string]string{"schema": cleanupSchema, "bucket": bucket, "owner": owner, "retrieval": a.ID, "analysis": a.Analysis, "snapshot": a.Snapshot, "repository": a.Repository, "commit": m.Commit})
+		if e = os.WriteFile(path, body, 0600); e != nil {
+			t.Fatal(e)
+		}
+		preserveForEvaluation = true
 	}
 }
