@@ -239,17 +239,42 @@ func TestS17RetainedResearch(t *testing.T) {
 	if _, err = db.Exec(ctx, `UPDATE research_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1`, r.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err = svc.Resume(ctx, owner, r.ID); err != nil {
+	replacement, err := svc.acquire(ctx, owner, r.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if e := svc.record(ctx, old, step, o, "VERIFIED_REFERENCES"); !errors.Is(e, ErrDenied) {
 		t.Fatal("stale worker wrote observation", e)
 	}
+	pending, err := svc.View(ctx, owner, r.ID)
+	if err != nil || len(pending.Steps) != 1 || pending.Steps[0].Attempts != 1 || pending.Steps[0].Observation != nil {
+		t.Fatal("missing durable attempt before takeover", err)
+	}
+	step = pending.Steps[0]
+	if err = svc.reserveTool(ctx, replacement, step); err != nil {
+		t.Fatal(err)
+	}
+	o, err = svc.Readers.read(ctx, owner, r.Scope, step.Decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.record(ctx, replacement, step, o, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(ctx, `UPDATE research_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1`, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Resume(ctx, owner, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if e := svc.record(ctx, replacement, step, o, "VERIFIED_REFERENCES"); !errors.Is(e, ErrDenied) {
+		t.Fatal("stale replacement finalized", e)
+	}
 	got, err := svc.View(ctx, owner, r.ID)
-	if err != nil || got.Generation != old.generation+1 || len(got.Steps) != 2 || got.Steps[0].Attempts != 2 || got.State != "COMPLETED" {
+	if err != nil || got.Generation != old.generation+2 || len(got.Steps) != 2 || got.Steps[0].Attempts != 2 || got.State != "COMPLETED" {
 		t.Fatalf("recovery failed: %s %v", got.State, err)
 	}
-	t.Logf("recovery old_generation=%d new_generation=%d logical_tool_calls=1 attempts=%d status=%s", old.generation, got.Generation, got.Steps[0].Attempts, got.State)
+	t.Logf("recovery generations=%d/%d/%d logical_tool_calls=1 attempts=%d status=%s", old.generation, replacement.generation, got.Generation, got.Steps[0].Attempts, got.State)
 
 	for _, denial := range []Decision{
 		{Version: DecisionVersion, Kind: "CALL_TOOL", Tool: "execute_command", Args: json.RawMessage(`{}`)},

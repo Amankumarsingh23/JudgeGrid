@@ -20,6 +20,12 @@ The first retained Linux run, using fixture policy v1, observed the following re
 
 The tagged Linux race run passed in 390.9 seconds. In the simulated process-loss case, two workers competed for one claim. Generation 1 completed a real read and lost its lease before recording the observation. Generation 2 re-authorized the read, committed one logical observation with two physical attempts, and finished. The stale generation could not record or finalize. Foreign-owner view and approval requests, wrong digests and reversed decisions were rejected. Replaying the same grant left the approved action at one physical attempt.
 
+The v2 CLI then completed the guard lookup on the same retained index. It recorded seven physical reads, 12,899 accounted bytes and 4,095 WordPieces in 25.2 seconds outside the race instrumentation. Its verified guard citation is [ownership.go lines 21–38](https://github.com/Amankumarsingh23/JudgeGrid/blob/56ea76e421eca19066362fdecedd4e9aae04521e/internal/storage/ownership.go#L21-L38), hash `2597838514c9c32d1619ef6fe527c51903fa1372532e47eca438932b5691ccd6`. The archived run also contains the full renewal citation.
+
+The v2 CLI replayed both provisional false-support cases (q58 and q60). Each recorded five physical reads. q58 accounted for 14,462 bytes and 3,856 WordPieces in 19.5 seconds. q60 accounted for 6,452 bytes and 3,548 WordPieces in 19.1 seconds. Both still returned VERIFIED_REFERENCES with explicit task-sufficiency uncertainty. They produced no positive answer or calibrated confidence. The original false-support signal therefore remains useful evidence of a retrieval weakness.
+
+The expanded tagged test also covers a second takeover after a committed observation, forbidden dispatch through the orchestrator, a source outage with an incomplete physical attempt, and the planner-call ceiling. Scope forgery and prompt injection use adversarial decision fixtures. Outage tests simulate one backend failure at a time. The byte and WordPiece totals in the retained tasks stayed below their limits.
+
 ## Limits and handoff
 
 The Session 16 labels remain provisional and model-assisted. Its pooled full-pack nDCG@5 of 0.4829 versus hybrid's 0.3358 had a paired interval including zero. Only 20 of 56 answerable questions had all required groups. Two of four provisional negatives received strong support. The controller reports task sufficiency as unassessed even when it can verify references. Native Windows agent regressions from Session 15 remain open.
