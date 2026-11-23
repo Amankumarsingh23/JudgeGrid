@@ -93,6 +93,8 @@ func targetAllowed(target string) bool {
 	return true
 }
 
+func AllowedTarget(target string) bool { return targetAllowed(target) }
+
 func reportMatches(r validation.Request) bool {
 	return r.State == "COMPLETED" && r.Report != nil && r.ReportDigest != "" &&
 		r.Report.Validation == r.ID && r.Report.Version == r.Version && r.Report.Profile == r.Profile &&

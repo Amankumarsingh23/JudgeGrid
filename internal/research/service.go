@@ -18,6 +18,7 @@ type Service struct {
 	DB      *pgxpool.Pool
 	Readers Readers
 	Planner Planner
+	Parent  func(context.Context, func() error) error
 }
 
 type Run struct {
@@ -66,6 +67,13 @@ func validRun(owner, id string) bool {
 }
 
 func (s Service) Create(ctx context.Context, owner, index, goal string) (Run, error) {
+	return s.CreateWithID(ctx, owner, index, goal, uuid.NewString())
+}
+
+func (s Service) CreateWithID(ctx context.Context, owner, index, goal, id string) (Run, error) {
+	if !validRun(owner, id) {
+		return Run{}, ErrDenied
+	}
 	if len(owner) == 0 || len(owner) > 200 || len(goal) > 256 || strings.TrimSpace(goal) == "" || strings.ContainsAny(goal, "\x00\r\n") || s.Planner.Identity() == "" || len(s.Planner.Identity()) > 128 {
 		return Run{}, ErrPolicy
 	}
@@ -81,6 +89,16 @@ func (s Service) Create(ctx context.Context, owner, index, goal string) (Run, er
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('research:'||$1,0))", owner); err != nil {
 		return Run{}, err
 	}
+	old, err := scanRun(tx.QueryRow(ctx, "SELECT "+columns+" FROM research_runs WHERE id=$1 AND owner=$2", id, owner))
+	if err == nil {
+		if old.Scope != scope || old.Goal != goal || old.Planner != s.Planner.Identity() {
+			return Run{}, ErrDenied
+		}
+		return old, tx.Commit(ctx)
+	}
+	if !errors.Is(err, ErrDenied) {
+		return Run{}, err
+	}
 	var allowed bool
 	if err = tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE deadline>clock_timestamp() AND state IN ('CREATED','RUNNING','PLANNING','WAITING_APPROVAL'))<3
  AND count(*)<12 FROM research_runs WHERE owner=$1 AND created_at>clock_timestamp()-interval '1 hour'`, owner).Scan(&allowed); err != nil {
@@ -89,8 +107,8 @@ func (s Service) Create(ctx context.Context, owner, index, goal string) (Run, er
 	if !allowed {
 		return Run{}, ErrBudget
 	}
-	run, err := scanRun(tx.QueryRow(ctx, `INSERT INTO research_runs(owner,repository,snapshot,analysis,retrieval,commit_oid,planner,goal)
- VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING `+columns, owner, scope.Repository, scope.Snapshot, scope.Analysis, scope.Retrieval, scope.Commit, s.Planner.Identity(), goal))
+	run, err := scanRun(tx.QueryRow(ctx, `INSERT INTO research_runs(owner,repository,snapshot,analysis,retrieval,commit_oid,planner,goal,id)
+ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING `+columns, owner, scope.Repository, scope.Snapshot, scope.Analysis, scope.Retrieval, scope.Commit, s.Planner.Identity(), goal, id))
 	if err != nil {
 		return Run{}, err
 	}
@@ -272,6 +290,13 @@ func (s Service) acquire(ctx context.Context, owner, id string) (claim, error) {
 }
 
 func (s Service) fenced(ctx context.Context, c claim, fn func(pgx.Tx) error) error {
+	if s.Parent != nil {
+		return s.Parent(ctx, func() error { return s.fencedChild(ctx, c, fn) })
+	}
+	return s.fencedChild(ctx, c, fn)
+}
+
+func (s Service) fencedChild(ctx context.Context, c claim, fn func(pgx.Tx) error) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	tx, err := s.DB.Begin(ctx)

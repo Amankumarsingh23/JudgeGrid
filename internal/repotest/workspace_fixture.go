@@ -1,4 +1,4 @@
-//go:build validationintegration || repairintegration
+//go:build validationintegration || repairintegration || taskintegration
 
 // Package repotest provisions a disposable pinned source workspace for controller integration tests.
 package repotest

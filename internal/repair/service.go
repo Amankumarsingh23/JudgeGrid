@@ -22,6 +22,7 @@ type Service struct {
 	Workspace  workspace.WorkspaceManager
 	Validation validation.Service
 	Proposer   RepairProposer
+	Parent     workspace.Authority
 }
 type Run struct {
 	ID               string      `json:"id"`
@@ -263,6 +264,10 @@ func (s Service) acquire(ctx context.Context, owner, id string) (claim, error) {
 }
 
 func (s Service) fenced(ctx context.Context, c claim, fn func(pgx.Tx) error) error {
+	return s.Parent.Guard(ctx, func() error { return s.fencedChild(ctx, c, fn) })
+}
+
+func (s Service) fencedChild(ctx context.Context, c claim, fn func(pgx.Tx) error) error {
 	bounded, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	tx, e := s.DB.Begin(bounded)

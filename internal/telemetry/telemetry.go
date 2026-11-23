@@ -57,6 +57,9 @@ func operation(v string) string {
 	if v == "validation.run" {
 		return v
 	}
+	if v == "task.resume" {
+		return v
+	}
 	if strings.HasPrefix(v, "repair.") {
 		return normalize(v, "repair.resume repair.propose")
 	}
