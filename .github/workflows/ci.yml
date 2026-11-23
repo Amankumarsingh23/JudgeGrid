@@ -161,7 +161,10 @@ jobs:
           python -m pip install --only-binary=:all: --require-hashes -r internal/analysis/helper/requirements.lock
           python -m pip install --no-deps --only-binary=:all: --require-hashes -r internal/retrieval/helper/requirements.lock
           python scripts/setup-retrieval-model.py --directory "$RUNNER_TEMP/judgegrid-task-model"
-          REPO_ANALYSIS_PYTHON="$(command -v python)" REPO_EMBEDDING_PYTHON="$(command -v python)" +            REPO_EMBEDDING_MODEL="$RUNNER_TEMP/judgegrid-task-model" +            go test -count=1 -race -timeout=20m -tags=taskintegration -v ./internal/task
+          export REPO_ANALYSIS_PYTHON="$(command -v python)"
+          export REPO_EMBEDDING_PYTHON="$REPO_ANALYSIS_PYTHON"
+          export REPO_EMBEDDING_MODEL="$RUNNER_TEMP/judgegrid-task-model"
+          go test -count=1 -race -timeout=20m -tags=taskintegration -v ./internal/task
       - name: Real durable judging matrix
         env:
           JUDGEGRID_JUDGE_TESTS: '1'
