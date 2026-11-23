@@ -145,6 +145,11 @@ jobs:
           JUDGEGRID_VALIDATION_TESTS: '1'
           TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
         run: go test -count=1 -race -timeout=12m -tags=validationintegration -v ./internal/validation
+      - name: Bounded repair, fresh grants and recovery
+        env:
+          JUDGEGRID_REPAIR_TESTS: '1'
+          TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
+        run: go test -count=1 -race -timeout=20m -tags=repairintegration -v ./internal/repair
       - name: Real durable judging matrix
         env:
           JUDGEGRID_JUDGE_TESTS: '1'

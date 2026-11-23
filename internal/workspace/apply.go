@@ -142,10 +142,47 @@ type lease struct {
 type faultHooks struct {
 	staged    func(int) error
 	published func() error
+	authority Authority
+}
+
+// Authority is an optional trusted parent fence for child side effects.
+type Authority func(context.Context, func() error) error
+
+func (a Authority) Guard(ctx context.Context, action func() error) error {
+	if a == nil {
+		return action()
+	}
+	return a(ctx, action)
 }
 
 func (m WorkspaceManager) ApplyApprovedPatch(ctx context.Context, owner, id, identity string) (Result, error) {
 	return m.apply(ctx, owner, id, identity, faultHooks{})
+}
+
+func (m WorkspaceManager) ApplyWithAuthority(ctx context.Context, owner, id, identity string, authority Authority) (Result, error) {
+	if authority == nil {
+		return Result{}, ErrDenied
+	}
+	return m.apply(ctx, owner, id, identity, faultHooks{authority: authority})
+}
+
+func (m WorkspaceManager) InspectApproval(ctx context.Context, owner, id, identity string) (Approval, error) {
+	if !validHash(identity) {
+		return Approval{}, ErrInvalid
+	}
+	tx, w, err := m.lock(ctx, owner, id)
+	if err != nil {
+		return Approval{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err = expireApproval(ctx, tx, w.ID, identity); err != nil {
+		return Approval{}, err
+	}
+	a, err := scanApproval(tx.QueryRow(ctx, "SELECT "+approvalFields+" FROM research_edit_approvals WHERE workspace=$1 AND digest=$2 AND requested_by=$3", id, identity, owner))
+	if err != nil {
+		return a, err
+	}
+	return a, tx.Commit(ctx)
 }
 
 func (m WorkspaceManager) apply(ctx context.Context, owner, id, identity string, hooks faultHooks) (Result, error) {
@@ -160,7 +197,13 @@ func (m WorkspaceManager) apply(ctx context.Context, owner, id, identity string,
 	if err != nil {
 		return Result{}, err
 	}
-	claim, replay, err := m.claim(ctx, owner, p)
+	var claim lease
+	var replay Result
+	err = hooks.authority.Guard(ctx, func() error {
+		var e error
+		claim, replay, e = m.claim(ctx, owner, p)
+		return e
+	})
 	if err != nil || replay.Replay {
 		return replay, err
 	}
@@ -192,7 +235,7 @@ func (m WorkspaceManager) apply(ctx context.Context, owner, id, identity string,
 	}
 	out.StageSeconds = time.Since(stage).Seconds()
 	publication := time.Now()
-	if err = m.publish(ctx, owner, p, claim, files, out.Version); err != nil {
+	if err = hooks.authority.Guard(ctx, func() error { return m.publish(ctx, owner, p, claim, files, out.Version) }); err != nil {
 		return Result{}, err
 	}
 	out.PublishSeconds = time.Since(publication).Seconds()

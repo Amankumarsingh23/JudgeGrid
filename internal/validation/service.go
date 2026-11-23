@@ -285,12 +285,28 @@ func (s Service) Run(ctx context.Context, owner, id string) (r Request, err erro
 	return s.run(ctx, owner, id, nil)
 }
 func (s Service) run(ctx context.Context, owner, id string, beforePublish func() error) (Request, error) {
+	return s.runControlled(ctx, owner, id, beforePublish, nil)
+}
+
+func (s Service) RunWithAuthority(ctx context.Context, owner, id string, authority workspace.Authority) (Request, error) {
+	if authority == nil {
+		return Request{}, ErrDenied
+	}
+	return s.runControlled(ctx, owner, id, nil, authority)
+}
+
+func (s Service) runControlled(ctx context.Context, owner, id string, beforePublish func() error, authority workspace.Authority) (Request, error) {
 	start := time.Now()
 	r, e := s.InspectValidation(ctx, owner, id)
 	if e != nil || r.State == "COMPLETED" {
 		return r, e
 	}
-	c, e := s.acquire(ctx, owner, id)
+	var c claim
+	e = authority.Guard(ctx, func() error {
+		var err error
+		c, err = s.acquire(ctx, owner, id)
+		return err
+	})
 	if e != nil {
 		return r, e
 	}
@@ -337,16 +353,18 @@ func (s Service) run(ctx context.Context, owner, id string, beforePublish func()
 			}
 		} else {
 			guard := func(work context.Context, fn func() error) error {
-				return s.fenced(work, c, func(tx pgx.Tx) error {
-					var selected bool
-					e := tx.QueryRow(work, `SELECT EXISTS(SELECT 1 FROM research_workspaces WHERE id=$1 AND owner=$2 AND selected=$3 AND expires_at>clock_timestamp())`, r.Workspace, owner, r.Version).Scan(&selected)
-					if e != nil {
-						return e
-					}
-					if !selected {
-						return ErrDenied
-					}
-					return fn()
+				return authority.Guard(work, func() error {
+					return s.fenced(work, c, func(tx pgx.Tx) error {
+						var selected bool
+						e := tx.QueryRow(work, `SELECT EXISTS(SELECT 1 FROM research_workspaces WHERE id=$1 AND owner=$2 AND selected=$3 AND expires_at>clock_timestamp())`, r.Workspace, owner, r.Version).Scan(&selected)
+						if e != nil {
+							return e
+						}
+						if !selected {
+							return ErrDenied
+						}
+						return fn()
+					})
 				})
 			}
 			if e = s.fenced(ctx, c, func(tx pgx.Tx) error {
@@ -383,13 +401,15 @@ func (s Service) run(ctx context.Context, owner, id string, beforePublish func()
 		report.Truncated = report.Truncated || len(before) != len(phase.Stdout) || len(stderr) != len(phase.Stderr) || phase.Outcome == execution.OutputExceeded
 	}
 	report.LogDigest = checksum(reportLogs(report.Phases))
-	e = s.fenced(ctx, c, func(tx pgx.Tx) error {
-		tag, e := tx.Exec(ctx, `UPDATE research_validations SET state='COMPLETED',result=$4,result_sha256=$5,claim=NULL,lease_until=NULL
+	e = authority.Guard(ctx, func() error {
+		return s.fenced(ctx, c, func(tx pgx.Tx) error {
+			tag, e := tx.Exec(ctx, `UPDATE research_validations SET state='COMPLETED',result=$4,result_sha256=$5,claim=NULL,lease_until=NULL
   WHERE id=$1 AND generation=$2 AND claim=$3 AND lease_until>clock_timestamp() AND deadline>clock_timestamp()`, id, c.generation, c.token, report, checksum(report))
-		if e == nil && tag.RowsAffected() != 1 {
-			return ErrDenied
-		}
-		return e
+			if e == nil && tag.RowsAffected() != 1 {
+				return ErrDenied
+			}
+			return e
+		})
 	})
 	if e != nil {
 		return r, e
