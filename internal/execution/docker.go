@@ -289,6 +289,10 @@ func (d *Docker) verify(ctx context.Context, name string, limits Limits, readonl
 	return d.validateInspection(out, limits, readonly, expected...)
 }
 func (d *Docker) validateInspection(out []byte, limits Limits, readonly bool, expected ...policyExpectation) error {
+	return d.validateInspectionMode(out, limits, readonly, false, expected...)
+}
+
+func (d *Docker) validateInspectionMode(out []byte, limits Limits, readonly, workspace bool, expected ...policyExpectation) error {
 	var v struct {
 		Image  string
 		Config struct {
@@ -326,7 +330,11 @@ func (d *Docker) validateInspection(out []byte, limits Limits, readonly bool, ex
 		return err
 	}
 	h := v.HostConfig
-	if h.Init == nil || !*h.Init || h.LogConfig.Type != "none" || h.ShmSize != 8<<20 || len(h.Tmpfs) != 1 || h.Tmpfs["/tmp"] != "rw,noexec,nosuid,nodev,size=67108864,mode=1777" || len(h.CapAdd)+len(h.Devices)+len(h.DeviceRequests)+len(h.ExtraHosts) > 0 || len(v.Config.Entrypoint) != 0 {
+	tmpfs, pids := normalTmpfs, int64(16)
+	if workspace {
+		tmpfs, pids = workspaceTmpfs, 64
+	}
+	if h.Init == nil || !*h.Init || h.LogConfig.Type != "none" || h.ShmSize != 8<<20 || len(h.Tmpfs) != 1 || h.Tmpfs["/tmp"] != tmpfs || len(h.CapAdd)+len(h.Devices)+len(h.DeviceRequests)+len(h.ExtraHosts) > 0 || len(v.Config.Entrypoint) != 0 {
 		return fmt.Errorf("mandatory bounded storage/init/privilege policy missing")
 	}
 	ulimits := map[string][2]int64{}
@@ -348,15 +356,33 @@ func (d *Docker) validateInspection(out []byte, limits Limits, readonly bool, ex
 			return fmt.Errorf("fixed watchdog/command mismatch")
 		}
 	}
-	if v.Config.User != "10001:10001" || h.Privileged || !h.ReadonlyRootfs || h.NetworkMode != "none" || h.PidMode != "" || h.IpcMode != "private" || h.CgroupnsMode != "private" || h.Memory != limits.MemoryBytes || h.MemorySwap != limits.MemoryBytes || h.NanoCpus != 1e9 || h.PidsLimit != 16 || len(h.Binds) != 0 || len(v.Mounts) != 1 {
+	if v.Config.User != "10001:10001" || h.Privileged || !h.ReadonlyRootfs || h.NetworkMode != "none" || h.PidMode != "" || h.IpcMode != "private" || h.CgroupnsMode != "private" || h.Memory != limits.MemoryBytes || h.MemorySwap != limits.MemoryBytes || h.NanoCpus != 1e9 || h.PidsLimit != pids || len(h.Binds) != 0 || len(v.Mounts) != 1 {
 		return fmt.Errorf("runtime did not retain required isolation/resource settings")
 	}
 	allowedEnv := map[string]bool{"PATH": true, "HOME": true, "LANG": true, "PYTHONDONTWRITEBYTECODE": true, "PYTHONHASHSEED": true, "PYTHON_VERSION": true, "PYTHON_SHA256": true, "GPG_KEY": true, "GPG_KEYS": true, "GCC_VERSION": true, "GCC_MIRRORS": true}
+	required := map[string]string{}
+	if workspace {
+		allowedEnv["GOLANG_VERSION"] = true
+		for _, env := range offlineGo {
+			key, value, _ := strings.Cut(env, "=")
+			required[key] = value
+			allowedEnv[key] = true
+		}
+	}
 	for _, env := range v.Config.Env {
-		key, _, _ := strings.Cut(env, "=")
+		key, value, _ := strings.Cut(env, "=")
 		if !allowedEnv[key] {
 			return fmt.Errorf("unapproved workload environment variable")
 		}
+		if want, ok := required[key]; ok {
+			if value != want {
+				return fmt.Errorf("offline environment mismatch")
+			}
+			delete(required, key)
+		}
+	}
+	if len(required) > 0 {
+		return fmt.Errorf("offline environment missing")
 	}
 	caps := false
 	nnp := false

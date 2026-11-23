@@ -133,11 +133,18 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Trusted runtime prefetch and image pinning
-        run: sh scripts/setup-sandbox.sh
+        run: |
+          sh scripts/setup-sandbox.sh
+          docker pull golang@sha256:672c944cfd07599b5f1bb179869270cdc94c6254e41db4d431259693cb286b82
       - name: Restricted sandbox enforcement tests (local controller)
         run: go test -race -tags=sandboxintegration -v ./internal/execution
       - name: Local judge PostgreSQL
         run: docker compose -f docker-compose.yml -f infra/local-judge.compose.yml up --build -d --wait postgres redis
+      - name: Approved immutable workspace validation
+        env:
+          JUDGEGRID_VALIDATION_TESTS: '1'
+          TEST_DATABASE_URL: postgres://judgegrid:judgegrid@127.0.0.1:15432/judgegrid?sslmode=disable
+        run: go test -count=1 -race -timeout=12m -tags=validationintegration -v ./internal/validation
       - name: Real durable judging matrix
         env:
           JUDGEGRID_JUDGE_TESTS: '1'
