@@ -235,10 +235,11 @@ func (s Service) Decide(ctx context.Context, owner, id string, ordinal int, dige
 		if err != nil {
 			return err
 		}
-		if previous == status && decider == owner {
+		allowed, replay := ApprovalTransition(previous, decider, owner, status)
+		if replay {
 			return nil
 		}
-		if previous != "PENDING" {
+		if !allowed {
 			return ErrDenied
 		}
 		changed, err := tx.Exec(ctx, `UPDATE research_approvals SET state=$3,decided_at=clock_timestamp(),decided_by=$4

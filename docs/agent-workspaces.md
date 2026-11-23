@@ -1,0 +1,11 @@
+# Agent workspaces
+
+Session 18 uses virtual object-backed workspaces. Preparations begin with an authenticated owner's completed Session 17 run. The run supplies the exact repository, READY snapshot, and Git commit. The existing repository registration and verified snapshot reader supply authorization and the Git object format. The controller does not accept a host path, URL, branch or model-selected source root.
+
+The base inventory is constructed from the verified snapshot manifest. Regular ingested blobs are verified through the existing reader and stored as private, hash-addressed byte objects in PostgreSQL. Paths excluded by ingestion, special Git entries and protected names occupy reserved inventory slots. Normal directory entries retain their identity without becoming files. The resulting projection represents the ingested snapshot and its reserved topology. It is not a new Git checkout or a full Git tree object.
+
+An inventory lists exact portable paths, virtual modes, SHA-256 hashes and lengths. The workspace identity, base commit, snapshot and policy are part of its version identity. A version has no writable filesystem representation. Content objects are scoped by workspace, and version inventories and blobs are immutable. Reads follow the selected pointer and rehash returned bytes.
+
+The controller accepts portable ASCII path segments and checks aliases separately at every directory level. Windows device names, trailing spaces and dots, case aliases, parent traversal, Git internals, credential paths and reserved ancestors are rejected. A symlink is a reserved leaf, even when its target would exist. The design has no operating-system resolution of repository paths, so it does not follow junctions, hardlinks or other host filesystem aliases. A retained repository with an unsupported path is rejected rather than renamed.
+
+The v1 policy allows at most 512 inventory entries, 16 MiB of materialized tree bytes, 4 MiB per underlying blob, and three preparations per principal per 24 hours. A workspace expires after 24 hours. The operator sees the exact archived references and can propose text edits using the trusted development interface. It cannot derive permission from comments, README instructions or a planner's output.
